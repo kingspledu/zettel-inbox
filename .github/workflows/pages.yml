@@ -21,8 +21,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --check app.js && node --check capture-format.js && node --check policy.js && node --check cloud.js && node --check cloud-ui.js && node --check share.js && node --check share-ui.js && node test.cjs && node capture-format.test.cjs && node cloud.test.cjs && node unlock.test.cjs && node share.test.cjs && node --check receive-share.js && node receive-share.test.cjs && node instagram-worker/extract.test.mjs
-      - run: mkdir _site && cp index.html style.css app.js capture-format.js policy.js cloud.js cloud-ui.js firebase-config.js unlock-key.js unlock-config.js share.js share-ui.js receive-share.js sw.js manifest.webmanifest instagram-config.js _site/ && cp -r shares icons _site/
+      - run: node --check app.js && node --check capture-format.js && node --check policy.js && node --check cloud.js && node --check cloud-ui.js && node --check share.js && node --check share-ui.js && node test.cjs && node capture-format.test.cjs && node cloud.test.cjs && node unlock.test.cjs && node share.test.cjs && node --check receive-share.js && node receive-share.test.cjs && node instagram-worker/extract.test.mjs && node instagram-retry.test.cjs
+      - run: mkdir _site && cp index.html style.css app.js capture-format.js policy.js cloud.js cloud-ui.js firebase-config.js unlock-key.js unlock-config.js share.js share-ui.js receive-share.js sw.js manifest.webmanifest instagram-config.js instagram-retry.js _site/ && cp -r shares icons _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

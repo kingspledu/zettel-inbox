@@ -1,6 +1,6 @@
 const fs=require('node:fs');const vm=require('node:vm');const assert=require('node:assert/strict');
 const elements=new Map();const el=id=>{if(!elements.has(id))elements.set(id,{value:'',style:{},files:[]});return elements.get(id);};
-const ctx={CaptureFormat:require('./capture-format.js'),document:{getElementById:el},indexedDB:{open:()=>({})},console,Blob,URL,atob,TextEncoder,crypto:require('node:crypto').webcrypto,setTimeout,clearTimeout};vm.createContext(ctx);
+const ctx={InstagramRetry:require('./instagram-retry'),CaptureFormat:require('./capture-format.js'),document:{getElementById:el},indexedDB:{open:()=>({})},console,Blob,URL,atob,TextEncoder,crypto:require('node:crypto').webcrypto,setTimeout,clearTimeout};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync('policy.js','utf8')+'\n'+fs.readFileSync('app.js','utf8'),ctx);
 vm.runInContext(`
 const sample={id:'test',title:'<script>alert(1)</script>',content:'원문\\n부정과 조건 보존',source:'책',tags:['독서'],captured_at:'2026-10-14T00:00:00Z',status:'unprocessed',attachments:[{name:'a.txt',mime_type:'text/plain',size:3,encoding:'base64',data:'YWJj',text_content:'abc'}]};

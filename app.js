@@ -10,11 +10,12 @@ async function refresh() { records=[];if(cloudActive()){try{records=await CloudS
 async function saveRecord(record) {requireFirebase();return CloudStore.save(record);}
 function visible() { const q = $('search').value.toLocaleLowerCase(); return records.filter(r => [r.title,r.content,r.source,...r.tags,...r.attachments.map(a=>a.name)].join('\n').toLocaleLowerCase().includes(q)); }
 function renderCapture(r){return r.capture?`<details><summary>원문과 아이디어 분리 정보</summary><pre class="excerpt" style="max-height:400px">${escapeHTML(JSON.stringify(r.capture,null,2))}</pre></details>`:'';}
+function renderInstagramRetry(r){return InstagramRetry.findUrl(r)?`<div style="margin-top:12px"><button data-retry-instagram="${escapeHTML(r.id)}">웹에서 다시 수집</button></div>`:'';}
 function render() {
   $('saveCapture').disabled=!cloudActive();$('restore').disabled=!cloudActive();
   $('count').textContent = records.length; $('total').textContent = records.length + '개';
   const rows = visible(); $('selectAll').checked = rows.length > 0 && rows.every(r=>selected.has(r.id));
-  $('items').innerHTML = rows.length ? rows.map(r => `<article class="card"><input type="checkbox" data-select="${escapeHTML(r.id)}" aria-label="${escapeHTML(r.title || '자료')} 선택" ${selected.has(r.id)?'checked':''}><div class="card-body"><h3>${escapeHTML(r.title || '제목 없는 자료')}</h3><p class="excerpt">${escapeHTML(r.content)}</p><div class="meta">${escapeHTML(r.source || '출처 미입력')} · ${escapeHTML(new Date(r.captured_at).toLocaleString('ko-KR'))}</div>${renderCapture(r)}${r.tags.map(t=>`<span class="tag">${escapeHTML(t)}</span>`).join('')}${r.attachments.length?`<details><summary>첨부 ${r.attachments.length}개</summary>${r.attachments.map((a,i)=>`<div>${escapeHTML(a.name)} · ${Math.ceil(a.size/1024)} KB <button data-file="${escapeHTML(r.id)}" data-index="${i}">원본 다운로드</button></div>`).join('')}</details>`:''}</div><button data-delete="${escapeHTML(r.id)}">삭제</button></article>`).join('') : `<div class="empty"><b>${!cloudActive()?'보관함 잠금을 해제해주세요':records.length?'검색 결과가 없습니다':'첫 번째 자료를 담아보세요'}</b>모아둔 원문은 자동으로 분석하거나 바꾸지 않습니다.</div>`;
+  $('items').innerHTML = rows.length ? rows.map(r => `<article class="card"><input type="checkbox" data-select="${escapeHTML(r.id)}" aria-label="${escapeHTML(r.title || '자료')} 선택" ${selected.has(r.id)?'checked':''}><div class="card-body"><h3>${escapeHTML(r.title || '제목 없는 자료')}</h3><p class="excerpt">${escapeHTML(r.content)}</p><div class="meta">${escapeHTML(r.source || '출처 미입력')} · ${escapeHTML(new Date(r.captured_at).toLocaleString('ko-KR'))}</div>${renderCapture(r)}${renderInstagramRetry(r)}${r.tags.map(t=>`<span class="tag">${escapeHTML(t)}</span>`).join('')}${r.attachments.length?`<details><summary>첨부 ${r.attachments.length}개</summary>${r.attachments.map((a,i)=>`<div>${escapeHTML(a.name)} · ${Math.ceil(a.size/1024)} KB <button data-file="${escapeHTML(r.id)}" data-index="${i}">원본 다운로드</button></div>`).join('')}</details>`:''}</div><button data-delete="${escapeHTML(r.id)}">삭제</button></article>`).join('') : `<div class="empty"><b>${!cloudActive()?'보관함 잠금을 해제해주세요':records.length?'검색 결과가 없습니다':'첫 번째 자료를 담아보세요'}</b>모아둔 원문은 자동으로 분석하거나 바꾸지 않습니다.</div>`;
 }
 function readFile(file) { return new Promise((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve({name:file.name,mime_type:file.type || 'application/octet-stream',size:file.size,encoding:'base64',data:reader.result.split(',')[1]}); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); }); }
 function download(blob,name) { const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href=url; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(url),10000); }
@@ -59,10 +60,20 @@ $('capture').onsubmit=async event=>{event.preventDefault();if(busy)return;try{re
 };
 $('items').onchange = e => { const id=e.target.dataset.select;if(id){e.target.checked?selected.add(id):selected.delete(id);render();} };
 $('items').onclick = async e => {
+  if(e.target.dataset.retryInstagram){await retrySavedInstagram(e.target.dataset.retryInstagram);return;}
   if(busy)return;try{requireFirebase();}catch(error){return notify(error.message);}const deleteId=e.target.dataset.delete, fileId=e.target.dataset.file;
   if(deleteId && confirm('DB에서 이 자료를 삭제할까요? GitHub 첨부 원본은 남습니다.')) {busy=true;try{await CloudStore.remove(deleteId);selected.delete(deleteId);await refresh();notify('삭제했습니다.');}catch{notify('삭제하지 못했습니다.');}finally{busy=false;}}
   if(fileId){busy=true;try{const r=records.find(r=>r.id===fileId);const complete=cloudActive()?await CloudStore.hydrate({...r,attachments:[r.attachments[Number(e.target.dataset.index)]]}):{attachments:[r.attachments[Number(e.target.dataset.index)]]};const file=complete.attachments[0];const bytes=Uint8Array.from(atob(file.data),c=>c.charCodeAt(0));download(new Blob([bytes],{type:file.mime_type}),file.name);}catch(error){notify(error.message);}finally{busy=false;}}
 };
+let pendingInstagramRetry=null;
+async function retrySavedInstagram(id){if(busy)return;try{requireFirebase();}catch(error){return notify(error.message);}const record=records.find(r=>r.id===id);if(!record)return;
+  busy=true;pendingInstagramRetry=null;$('saveRetry').disabled=true;$('retryResult').textContent='저장된 링크로 공개 웹페이지를 다시 조회하고 있습니다…';$('retryDialog').showModal();
+  try{const result=await CloudStore.extractInstagram(InstagramRetry.findUrl(record));pendingInstagramRetry=InstagramRetry.capture(record,result);$('retryResult').textContent=JSON.stringify(result,null,2);$('saveRetry').disabled=false;}
+  catch(error){$('retryResult').textContent='재수집 실패: '+error.message+'\n기존 자료는 그대로 보존했습니다.';}finally{busy=false;}
+}
+$('closeRetry').onclick=()=>{if(busy)return;pendingInstagramRetry=null;$('retryDialog').close();};
+$('retryDialog').oncancel=event=>{if(busy)event.preventDefault();else pendingInstagramRetry=null;};
+$('saveRetry').onclick=async()=>{if(busy||!pendingInstagramRetry)return;busy=true;$('saveRetry').disabled=true;try{const rows=await CaptureFormat.toRecords(pendingInstagramRetry);for(const row of rows)if(new TextEncoder().encode(JSON.stringify(row)).length>800000)throw Error('재수집 결과가 너무 커 저장할 수 없습니다.');for(const row of rows)await saveRecord(row);await refresh();pendingInstagramRetry=null;$('retryDialog').close();notify('웹 재수집 결과를 새 항목으로 보관했습니다. 기존 자료는 유지했습니다.');}catch(error){$('retryResult').textContent+='\n저장 실패: '+error.message;$('saveRetry').disabled=false;}finally{busy=false;}};
 $('search').oninput=render;
 $('selectAll').onchange=e=>{visible().forEach(r=>e.target.checked?selected.add(r.id):selected.delete(r.id));render();};
 $('exportAll').onclick=()=>exportRecords(records);

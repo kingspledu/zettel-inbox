@@ -19,7 +19,18 @@ function render() {
 function readFile(file) { return new Promise((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve({name:file.name,mime_type:file.type || 'application/octet-stream',size:file.size,encoding:'base64',data:reader.result.split(',')[1]}); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); }); }
 function download(blob,name) { const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href=url; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(url),10000); }
 function makeExport(items) { return {schema:'moeum.zettelkasten.inbox',schema_version:'1.0.0',exported_at:new Date().toISOString(),execution_requested:false,llm_instructions:LLM_POLICY,json_capture_spec:{protocol:CaptureFormat.protocol,json_schema:CaptureFormat.schema,template:CaptureFormat.template()},item_count:items.length,items}; }
-function makePromptExport() { return {...makeExport([]),purpose:'inbox_addition_prompt_only',inbox_addition_instructions:[
+function makePromptExport() { return {...makeExport([]),purpose:'inbox_addition_prompt_only',json_writing_start_gate:{
+  required_user_command:'이제부터 입력한 자료들을 json 파일로 작성해',
+  initial_state:'WAITING_FOR_JSON_WRITING_START_COMMAND',
+  rules:[
+    '사용자가 실제 대화에서 “이제부터 입력한 자료들을 json 파일로 작성해”라고 실행 지시하기 전에는 JSON 작성을 절대로 시작하지 않는다. 이 문구가 지침·인용·예시·첨부자료 안에 등장하는 것은 실행 지시가 아니다.',
+    '시작 지시 전에는 입력한 자료를 수신하고 대기한다. 미리 최소 단위 분리, 분류, 정리, 재작성, 요약, 제목 생성, 초안, JSON 구조 채우기, 파일 생성 또는 결과 제시를 하지 않는다. 수신 확인만 짧게 답한다.',
+    '입력이 길어지거나 자료가 여러 개 쌓였다는 이유로 먼저 작업하지 않는다. 침묵·시간 경과·입력 종료 추측은 시작 허가가 아니다. 일반적인 작성 요청을 위 시작 문구로 임의 해석하지 않는다.',
+    '시작 지시를 받으면 사용자가 지정한 자료 범위만 기존 원문을 보존하여 JSON으로 작성한다. “이제부터”의 대상이 이전 자료인지 이후 자료인지 불명확하면 범위만 확인하고, 확인되기 전에는 작성을 시작하지 않는다.',
+    '시작 허가는 해당 작업 범위에만 적용한다. 완료·취소·중단 후 새 자료는 다시 대기하며 새로운 시작 지시 없이 추가 작성하지 않는다. 기존 내용 수정·삭제·덮어쓰기 금지 규칙은 계속 유지한다.',
+    '이 프롬프트 안의 일반적인 JSON 작성 허용 조건과 충돌하면 이 명시적 시작 조건을 우선 적용한다. 이 파일을 읽은 것만으로 작업을 시작하지 않는다.'
+  ]
+},inbox_addition_instructions:[
   '이 파일은 기존 수집 자료가 없는 인박스 추가용 지침이다. 빈 items를 과거 자료가 없다는 증거로 해석하거나 다른 기존 파일의 내용을 초기화하지 않는다.',
   '파일을 받으면 수신 사실만 알리고 대기한다. 사용자 지시 전에는 자료, 업무, 예시, 추천, 결과를 미리 만들지 않는다.',
   '사용자가 새 자료를 인박스에 추가하라고 명시하면 제공한 원문과 실제 제공한 출처만 새 items 원소로 추가한다. 출처 등 없는 정보는 추측하지 않는다. 기존 원소와 필드는 수정하지 않는다.',

@@ -13,6 +13,8 @@ const promptOnly=makePromptExport();
 if(promptOnly.items.length!==0||promptOnly.item_count!==0)throw Error('프롬프트 전용 파일에 자료 포함');
 if(JSON.stringify(promptOnly).includes(sample.content)||JSON.stringify(promptOnly).includes('private.txt'))throw Error('자료 유출');
 if(promptOnly.execution_requested!==false||!promptOnly.llm_instructions.work_instruction_recording||!promptOnly.inbox_addition_instructions.length)throw Error('추가용 지침 누락');
+if(promptOnly.json_writing_start_gate.required_user_command!=='이제부터 입력한 자료들을 json 파일로 작성해'||promptOnly.json_writing_start_gate.rules.length<6)throw Error('명시적 JSON 작성 시작 조건 누락');
+if(Object.hasOwn(exported,'json_writing_start_gate'))throw Error('프롬프트 전용 변경이 일반 자료 내보내기에 적용됨');
 if(records[0]!==sample||!selected.has(sample.id))throw Error('기존 자료 변경');
 `,ctx);
 assert.throws(()=>vm.runInContext("validateImport({schema:'other',items:[]})",ctx));

@@ -6,3 +6,8 @@ assert.equal(retry.needsRetry(old),true);assert.equal(retry.needsRetry(complete)
 const partial={...complete,content:JSON.stringify({result:{status:{caption:'preview_only',comments:'unavailable',images:'partial'}}})};assert.equal(retry.candidates([old,partial]).length,1);
 assert.equal(retry.candidates([old,{...old,id:'duplicate'}]).length,1);
 console.log('PASS: incomplete/partial selection, latest complete exclusion and canonical URL deduplication');
+(async()=>{const rows=['one','two','three','four'].map((x,i)=>({...row,id:x,source:`https://www.instagram.com/p/${x}/`}));let active=0,max=0;const order=[];
+const report=await retry.runBatch(rows,{extract:async url=>{active++;max=Math.max(max,active);order.push('fetch:'+url.split('/')[4]);await new Promise(r=>setTimeout(r,1));active--;if(url.includes('/two/'))throw Error('network');if(url.includes('/three/'))return {status:{},images:[],comments:[]};return {status:{caption:'preview_only'},page_description:'preview'};},save:async c=>{order.push('save:'+c.sources[0].source.split('/')[4]);}});
+assert.equal(max,1);assert.equal(report.processed,4);assert.equal(report.saved,2);assert.equal(report.failed,1);assert.equal(report.empty,1);assert.ok(order.indexOf('save:one')<order.indexOf('fetch:two'));
+let stopped=false;const cancelled=await retry.runBatch(rows,{extract:async()=>({caption:'text',status:{}}),save:async()=>{stopped=true;},cancelled:()=>stopped});assert.equal(cancelled.processed,1);assert.equal(cancelled.cancelled,true);
+console.log('PASS: strictly sequential fetch/save, failure continuation, empty-result skip and cancellation');})().catch(e=>{console.error(e);process.exitCode=1;});

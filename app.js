@@ -12,7 +12,7 @@ function visible() { const q = $('search').value.toLocaleLowerCase(); return rec
 function renderCapture(r){return r.capture?`<details><summary>원문과 아이디어 분리 정보</summary><pre class="excerpt" style="max-height:400px">${escapeHTML(JSON.stringify(r.capture,null,2))}</pre></details>`:'';}
 function renderInstagramRetry(r){return InstagramRetry.findUrl(r)?`<div style="margin-top:12px"><button data-retry-instagram="${escapeHTML(r.id)}">웹에서 다시 수집</button></div>`:'';}
 function render() {
-  const retryCount=InstagramRetry.candidates(records).length;$('retryMissingInstagram').textContent=`미수집 링크 웹 재시도 (${retryCount})`;$('retryMissingInstagram').disabled=!cloudActive()||!retryCount;
+  const retryCount=InstagramRetry.candidates(records).length;$('retryMissingInstagram').textContent=`수집 안 된 항목 일괄 다운로드 (${retryCount})`;$('retryMissingInstagram').disabled=!cloudActive()||!retryCount;
   $('saveCapture').disabled=!cloudActive();$('restore').disabled=!cloudActive();
   $('count').textContent = records.length; $('total').textContent = records.length + '개';
   const rows = visible(); $('selectAll').checked = rows.length > 0 && rows.every(r=>selected.has(r.id));
@@ -68,16 +68,28 @@ $('items').onclick = async e => {
 };
 let pendingInstagramRetry=null;
 async function retrySavedInstagram(id){if(busy)return;try{requireFirebase();}catch(error){return notify(error.message);}const record=records.find(r=>r.id===id);if(!record)return;
-  busy=true;pendingInstagramRetry=null;$('saveRetry').disabled=true;$('retryResult').textContent='저장된 링크로 공개 웹페이지를 다시 조회하고 있습니다…';$('retryDialog').showModal();
+  busy=true;pendingInstagramRetry=null;$('saveRetry').hidden=false;$('saveRetry').disabled=true;$('retryResult').textContent='저장된 링크로 공개 웹페이지를 다시 조회하고 있습니다…';$('retryDialog').showModal();
   try{const result=await CloudStore.extractInstagram(InstagramRetry.findUrl(record));pendingInstagramRetry=[InstagramRetry.capture(record,result)];$('retryResult').textContent=JSON.stringify(result,null,2);$('saveRetry').disabled=false;}
   catch(error){$('retryResult').textContent='재수집 실패: '+error.message+'\n기존 자료는 그대로 보존했습니다.';}finally{busy=false;}
 }
 $('closeRetry').onclick=()=>{if(busy)return;pendingInstagramRetry=null;$('retryDialog').close();};
 $('retryDialog').oncancel=event=>{if(busy)event.preventDefault();else pendingInstagramRetry=null;};
 $('saveRetry').onclick=async()=>{if(busy||!pendingInstagramRetry?.length)return;busy=true;$('saveRetry').disabled=true;let added=0;try{for(const capture of pendingInstagramRetry){const rows=await CaptureFormat.toRecords(capture);for(const row of rows)if(new TextEncoder().encode(JSON.stringify(row)).length>800000)throw Error('재수집 결과가 너무 커 저장할 수 없습니다.');for(const row of rows)if(await saveRecord(row))added++;}await refresh();pendingInstagramRetry=null;$('retryDialog').close();notify(`재수집 결과 ${added}개를 새 항목으로 보관했습니다. 기존 자료는 유지했습니다.`);}catch(error){await refresh().catch(()=>{});$('retryResult').textContent+=`\n${added}개 저장 후 중단: ${error.message}`;$('saveRetry').disabled=false;}finally{busy=false;}};
-$('retryMissingInstagram').onclick=async()=>{if(busy)return;try{requireFirebase();}catch(error){return notify(error.message);}const targets=InstagramRetry.candidates(records);if(!targets.length)return notify('재시도할 미수집 Instagram 링크가 없습니다.');if(!confirm(`미수집·일부 수집 링크 ${targets.length}개를 웹에서 순서대로 재시도할까요? 같은 링크는 한 번만 조회합니다.`))return;
-busy=true;pendingInstagramRetry=[];$('saveRetry').disabled=true;$('retryDialog').showModal();const results=[];
-try{for(let i=0;i<targets.length;i++){const record=targets[i],url=InstagramRetry.findUrl(record);$('retryResult').textContent=`${i+1}/${targets.length} 웹 조회 중…\n`+JSON.stringify(results,null,2);try{const result=await CloudStore.extractInstagram(url);pendingInstagramRetry.push(InstagramRetry.capture(record,result));results.push({url,result});}catch(error){results.push({url,error:error.message,original_preserved:true});}}$('retryResult').textContent=JSON.stringify(results,null,2);$('saveRetry').disabled=!pendingInstagramRetry.length;}finally{busy=false;}};
+let cancelBatchRetry=false;
+$('stopRetry').onclick=()=>{cancelBatchRetry=true;$('stopRetry').disabled=true;$('stopRetry').textContent='현재 항목 처리 후 중지';};
+$('retryMissingInstagram').onclick=async()=>{
+  if(busy)return;try{requireFirebase();}catch(error){return notify(error.message);}
+  if(!InstagramRetry.candidates(records).length)return notify('재시도할 미수집 Instagram 링크가 없습니다.');
+  busy=true;cancelBatchRetry=false;pendingInstagramRetry=null;$('saveRetry').disabled=true;$('saveRetry').hidden=true;$('stopRetry').hidden=false;$('stopRetry').disabled=false;$('stopRetry').textContent='중지';$('retryDialog').showModal();
+  try{await InstagramRetry.runBatch([...records],{
+    extract:url=>CloudStore.extractInstagram(url),
+    save:async capture=>{const rows=await CaptureFormat.toRecords(capture);for(const row of rows)if(new TextEncoder().encode(JSON.stringify(row)).length>800000)throw Error('결과가 너무 커 저장하지 못했습니다.');for(const row of rows)await saveRecord(row);},
+    cancelled:()=>cancelBatchRetry,
+    progress:r=>{$('retryResult').textContent=[r.phase==='done'?(r.cancelled?'중지됨':'순차 수집 완료'):'순차 수집·저장 중',`처리 ${r.processed}/${r.total} · 저장 ${r.saved} (일부 수집 ${r.partial}) · 미수집 ${r.empty} · 실패 ${r.failed}`,r.current||'',JSON.stringify(r.results,null,2)].join('\n');}
+  });await refresh();}
+  catch(error){$('retryResult').textContent+='\n처리 중단: '+error.message;}
+  finally{busy=false;$('stopRetry').hidden=true;await refresh().catch(()=>{});}
+};
 $('search').oninput=render;
 $('selectAll').onchange=e=>{visible().forEach(r=>e.target.checked?selected.add(r.id):selected.delete(r.id));render();};
 $('exportAll').onclick=()=>exportRecords(records);

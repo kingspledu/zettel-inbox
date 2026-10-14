@@ -1,6 +1,6 @@
 /* Firebase receives text and attachment metadata only. GitHub receives attachment bytes. */
 window.CloudStore = (() => {
-  let sdk, authSdk, auth, database, user, token = '', repo = '', active = false, temporary = false;
+  let sdk, authSdk, auth, database, user, inboxUid, token = '', repo = '', active = false, temporary = false;
   const apiRoot = 'https://api.github.com';
   const clean = r => ({id:r.id,title:r.title,content:r.content,source:r.source,tags:r.tags,captured_at:r.captured_at,status:'unprocessed',attachments:r.attachments,...(r.capture?{capture:r.capture}:{})});
   const fail = message => { throw new Error(message); };
@@ -44,7 +44,7 @@ window.CloudStore = (() => {
   }
   async function activate(nextUser) {
     user=nextUser;
-    try { await sdk.getDocs(sdk.query(sdk.collection(database,'users',user.uid,'items'),sdk.limit(1)));active=true; }
+    try {inboxUid=(await user.getIdTokenResult()).claims.inbox_uid||user.uid;await sdk.getDocs(sdk.query(sdk.collection(database,'users',inboxUid,'items'),sdk.limit(1)));active=true; }
     catch(error){active=false;user=null;throw error;}
     return user.email;
   }
@@ -55,7 +55,8 @@ window.CloudStore = (() => {
     if(temporary)provider.setCustomParameters({prompt:'select_account'});
     return activate((await authSdk.signInWithPopup(auth,provider)).user);
   }
-  function collection() { if(!active||!user)fail('클라우드 로그인이 필요합니다.');return sdk.collection(database,'users',user.uid,'items'); }
+  async function unlock(mode,input){if(!auth)fail('연결 준비 중입니다. 잠시 후 다시 시도하세요.');const accounts=window.INBOX_UNLOCK_ACCOUNTS;if(!accounts?.[mode])fail('잠금 설정을 불러오지 못했습니다.');const password=await UnlockKey.derive(mode,input);return activate((await authSdk.signInWithEmailAndPassword(auth,accounts[mode],password)).user);}
+  function collection() { if(!active||!user)fail('잠금을 먼저 해제해주세요.');return sdk.collection(database,'users',inboxUid,'items'); }
   async function list(){return (await sdk.getDocs(collection())).docs.map(d=>d.data());}
   async function hydrate(record) {
     const attachments=[];
@@ -92,6 +93,6 @@ window.CloudStore = (() => {
     }
   }
   async function remove(id){await sdk.deleteDoc(sdk.doc(collection(),id));}
-  async function disconnect(){active=false;token='';user=null;if(auth)await authSdk.signOut(auth);}
-  return {connect,resume,login,setGithubToken,list,save,hydrate,remove,disconnect,get active(){return active;},get temporary(){return temporary;}};
+  async function disconnect(){active=false;token='';user=null;inboxUid=null;if(auth)await authSdk.signOut(auth);}
+  return {connect,resume,login,unlock,setGithubToken,list,save,hydrate,remove,disconnect,get active(){return active;},get temporary(){return temporary;}};
 })();

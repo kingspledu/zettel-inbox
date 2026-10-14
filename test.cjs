@@ -23,7 +23,7 @@ console.log('PASS: JSON roundtrip, attachment integrity, duplicate/invalid rejec
 (async()=>{
   let browserOpens=0,saves=0;
   ctx.indexedDB.open=()=>{browserOpens++;throw Error('Unexpected browser storage access');};
-  await assert.rejects(()=>vm.runInContext('saveRecord(sample)',ctx),/Firebase/);
+  await assert.rejects(()=>vm.runInContext('saveRecord(sample)',ctx),/잠금/);
   await vm.runInContext('refresh()',ctx);
   assert.equal(vm.runInContext('records.length',ctx),0);
   assert.equal(el('saveCapture').disabled,true);

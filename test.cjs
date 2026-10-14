@@ -21,6 +21,14 @@ assert.throws(()=>vm.runInContext("validateImport({schema:'other',items:[]})",ct
 assert.throws(()=>vm.runInContext("validateImport({...exported,items:[sample,sample]})",ctx));
 assert.throws(()=>vm.runInContext("validateImport({...exported,items:[{...sample,attachments:[{...sample.attachments[0],size:99}]}]})",ctx));
 const policy=require('./policy.js');assert.equal(policy.initial_state,'AWAITING_EXPLICIT_USER_COMMAND');assert.ok(policy.command_gate.length>=8);assert.ok(policy.atomic_split_algorithm.steps.length>=8);
+vm.runInContext(`
+const instagramSample={...sample,source:'https://www.instagram.com/reel/abcdef/?tracking=1',attachments:[],content:JSON.stringify({result:{caption:'본문 <script>alert(1)</script>',cover_image:'https://s.cdninstagram.com/cover.jpg',images:['https://evil.test/tracker'],status:{caption:'collected'}}})};
+const postMarkup=renderInstagramPost(instagramSample);
+if(!postMarkup.includes('게시물 링크 복사')||!postMarkup.includes('릴스 커버')||!postMarkup.includes('https://www.instagram.com/reel/abcdef/'))throw Error('게시물 카드 필드 누락');
+if(postMarkup.includes('<script>')||postMarkup.includes('src="https://evil.test'))throw Error('게시물 카드에서 위험한 원문 실행');
+if(instagramSample.content!==JSON.stringify({result:{caption:'본문 <script>alert(1)</script>',cover_image:'https://s.cdninstagram.com/cover.jpg',images:['https://evil.test/tracker'],status:{caption:'collected'}}}))throw Error('표시 중 원문 수정');
+`,ctx);
+console.log('PASS: formatted reel card, cover preview, canonical copy link and safe original preservation');
 console.log('PASS: JSON roundtrip, attachment integrity, duplicate/invalid rejection, HTML escaping, command gate');
 (async()=>{
   let browserOpens=0,saves=0;

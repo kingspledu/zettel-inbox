@@ -96,7 +96,11 @@ def archive(url):
 def attachment(ref):
     if ref.get("repository") != REPO or not re.fullmatch(r"attachments/[a-f0-9-]{36}/[a-f0-9-]{36}",ref.get("path", "")) or not re.fullmatch(r"[a-f0-9]{40}",ref.get("sha", "")):
         raise ValueError("첨부 경로가 올바르지 않습니다.")
-    return gh(["api",f"repos/{REPO}/contents/{ref['path']}?ref={ref['sha']}","-H","Accept: application/vnd.github.raw+json"],binary=True)
+    metadata=gh(["api",f"repos/{REPO}/contents/{ref['path']}?ref={ref['sha']}"])
+    if metadata.get("encoding") != "base64":
+        metadata=gh(["api",f"repos/{REPO}/git/blobs/{metadata['sha']}"])
+    if metadata.get("encoding") != "base64": raise ValueError("첨부 인코딩 오류")
+    return base64.b64decode(metadata["content"])
 
 def authenticated(value):
     if not value.startswith("Bearer "): return False

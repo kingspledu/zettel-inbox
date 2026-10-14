@@ -17,6 +17,12 @@ class Tests(unittest.TestCase):
  def test_auth_and_private_paths(self):
   self.assertFalse(m.authenticated(""))
   with self.assertRaises(ValueError):m.attachment(dict(repository="evil/repo",path="x",sha="a"*40))
+ def test_attachment_bytes(self):
+  ref=dict(repository=m.REPO,path="attachments/"+"a"*36+"/"+"b"*36,sha="c"*40)
+  with patch.object(m,"gh",return_value={"encoding":"base64","content":"aW1hZ2U="}):
+   self.assertEqual(m.attachment(ref),b"image")
+  with patch.object(m,"gh",side_effect=[{"encoding":"none","sha":"d"*40},{"encoding":"base64","content":"aW1hZ2U="}]):
+   self.assertEqual(m.attachment(ref),b"image")
  def test_local_gh_upload(self):
   calls=[]
   def gh(args,payload=None,binary=False):

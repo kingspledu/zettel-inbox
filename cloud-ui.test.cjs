@@ -7,4 +7,8 @@ await $('connectCloud').onclick();await $('loginCloud').onclick();assert.equal(t
 await $('disconnectCloud').onclick();assert.equal(writes.length,0);assert.equal($('firebaseConfig').value,'');
 $('temporaryLogin').checked=false;$('firebaseConfig').value='{"projectId":"home-project"}';await $('connectCloud').onclick();await $('loginCloud').onclick();assert.ok(writes.some(([k])=>k==='moeum-cloud-config'));assert.ok(writes.some(([k,v])=>k==='moeum-cloud-autoconnect'&&v==='true'));assert.equal(session.has('moeum-temporary'),false);
 console.log('PASS: temporary login writes no persistent config; default login remembers configuration');
+const calls=[];const defaultContext={...ctx,window:{INBOX_FIREBASE_CONFIG:{projectId:'moeum-inbox-kingspledu-2026',apiKey:'public-web-config',authDomain:'example.firebaseapp.com'}},CloudStore:{...CloudStore,active:false,connect:async(...args)=>calls.push(args),resume:async()=>null},localStorage:{getItem:()=>null,setItem:()=>{throw Error('Unexpected setting write');}},sessionStorage:{getItem:()=>null},busy:false};
+vm.createContext(defaultContext);vm.runInContext(fs.readFileSync('cloud-ui.js','utf8'),defaultContext);await new Promise(resolve=>setImmediate(resolve));
+assert.equal(calls.length,1);assert.equal(calls[0][0].projectId,'moeum-inbox-kingspledu-2026');assert.equal($('loginCloud').disabled,false);assert.equal(calls[0][3].temporary,false);
+console.log('PASS: bundled project prepares Google login automatically without manual Firebase config');
 })().catch(error=>{console.error(error);process.exitCode=1;});

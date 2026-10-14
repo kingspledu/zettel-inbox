@@ -1,6 +1,6 @@
 # 모음 — 제텔카스텐 인박스
 
-텍스트·링크·파일을 원문 그대로 수집하고 LLM 전달용 JSON으로 내보내는 웹앱입니다. GitHub Pages에서 실행합니다. Firebase + 비공개 GitHub를 사용합니다. **프로젝트 연결 전에는 저장할 수 없습니다. 브라우저 대체 저장은 하지 않습니다.** [클라우드 연결 안내](CLOUD_SETUP.md)를 참고하세요.
+텍스트·링크·파일을 원문 그대로 수집하고 LLM 전달용 JSON으로 내보내는 웹앱입니다. GitHub Pages에서 실행합니다. Firebase + 비공개 GitHub를 사용합니다. **전용 프로젝트 moeum-inbox-kingspledu-2026이 기본 설정되어 있습니다. Google 로그인 후 저장할 수 있습니다. 브라우저 대체 저장은 하지 않습니다.** [클라우드 연결 안내](CLOUD_SETUP.md)를 참고하세요.
 
 ## 사용
 
@@ -21,3 +21,7 @@
 ## 개발
 
 별도 빌드는 없습니다. 클라우드 연결 시 Firebase SDK를 Google CDN에서 불러옵니다. `python -m http.server 8000`으로 실행하고 http://localhost:8000 에 접속합니다. `node test.cjs`와 `node cloud.test.cjs`로 내보내기·복원과 모의 API 기반 저장 분리를 검증합니다. 실제 Firebase 접근 규칙과 계정 연결은 별도로 검증해야 합니다. main 브랜치 push 시 GitHub Actions가 Pages에 배포합니다.
+
+## 운영 프로젝트
+
+moeum-inbox-kingspledu-2026 · Firestore 기본 DB, 서울(asia-northeast3). 결제 계정은 연결하지 않았습니다. firebase-config.js는 공개 웹 설정만 포함하며 관리자 인증정보는 포함하지 않습니다. 실제 서버 규칙은 운영자 Google 계정의 검증된 이메일과 사용자별 경로를 제한합니다. 저장소의 firestore.rules는 재사용용 잠금 템플릿입니다. 그대로 재배포하면 접근이 차단되므로 기존 운영 규칙을 확인하세요.

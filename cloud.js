@@ -2,7 +2,7 @@
 window.CloudStore = (() => {
   let sdk, authSdk, auth, database, user, inboxUid, token = '', repo = '', active = false, temporary = false;
   const apiRoot = 'https://api.github.com';
-  const clean = r => ({id:r.id,title:r.title,content:r.content,source:r.source,tags:r.tags,captured_at:r.captured_at,status:'unprocessed',attachments:r.attachments,...(r.capture?{capture:r.capture}:{})});
+  const clean = r => ({id:r.id,title:r.title,content:r.content,source:r.source,tags:r.tags,captured_at:r.captured_at,status:'unprocessed',attachments:r.attachments,...(r.capture?{capture:r.capture}:{}),...(r.media_backup?{media_backup:r.media_backup}:{})});
   const fail = message => { throw new Error(message); };
   async function github(path, options = {}, raw = false) {
     if(!token) fail('첨부파일을 사용하려면 연결 설정에서 GitHub 토큰을 입력하세요.');
@@ -92,8 +92,30 @@ window.CloudStore = (() => {
       throw error;
     }
   }
+  async function archiveInstagram(record, previous=[]) {
+    const result=InstagramRetry.result(record);if(!result)return record;
+    const urls=[...new Set(/\/reels?\//.test(InstagramRetry.findUrl(record)||'')?[result.cover_image].filter(Boolean):result.images||[])];
+    if(urls.length&&!token)fail('이미지 저장용 GitHub 토큰을 먼저 연결해주세요.');
+    const attachments=[...record.attachments],files=[],errors=[];
+    for(const url of urls){
+      const existing=previous.flatMap(r=>r.attachments||[]).find(a=>a.source_url===url&&a.github);
+      if(existing){attachments.push(existing);files.push({url,state:'stored'});continue;}
+      try{
+        const response=await fetch(window.INSTAGRAM_COLLECTOR_URL+'/media',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken()},body:JSON.stringify({url})});
+        if(!response.ok)throw Error('이미지 응답 '+response.status);
+        const bytes=new Uint8Array(await response.arrayBuffer());const mime=response.headers.get('Content-Type').split(';')[0];
+        if(!['image/jpeg','image/png','image/webp'].includes(mime)||!bytes.length||bytes.length>10000000)throw Error('이미지 형식/크기 오류');
+        let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
+        const path=`attachments/${crypto.randomUUID()}/${crypto.randomUUID()}`;
+        const uploaded=await github(`/repos/${repo}/contents/${path}`,{method:'PUT',body:JSON.stringify({message:'Archive Instagram image',content:btoa(binary)})});
+        attachments.push({name:`instagram-${attachments.length+1}.${mime==='image/jpeg'?'jpg':mime.split('/')[1]}`,mime_type:mime,size:bytes.length,source_url:url,github:{repository:repo,path,sha:uploaded.commit.sha}});
+        files.push({url,state:'stored'});
+      }catch(error){errors.push({url,error:error.message});}
+    }
+    return {...record,attachments,media_backup:{state:urls.length&&!errors.length?'collected':'partial',files,errors}};
+  }
   async function remove(id){await sdk.deleteDoc(sdk.doc(collection(),id));}
   async function disconnect(){active=false;token='';user=null;inboxUid=null;if(auth)await authSdk.signOut(auth);}
   async function extractInstagram(url){if(!active||!user)fail('잠금을 먼저 해제해주세요.');const endpoint=window.INSTAGRAM_COLLECTOR_URL;if(!endpoint)fail('상세 수집 서버가 설정되지 않았습니다.');const response=await fetch(endpoint+'/extract',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken()},body:JSON.stringify({url})});const result=await response.json();if(!response.ok)fail(result.error||'상세 수집에 실패했습니다.');return result;}
-  return {connect,resume,login,unlock,extractInstagram,setGithubToken,list,save,hydrate,remove,disconnect,get active(){return active;},get temporary(){return temporary;}};
+  return {connect,resume,login,unlock,extractInstagram,archiveInstagram,setGithubToken,list,save,hydrate,remove,disconnect,get mediaReady(){return !!token;},get active(){return active;},get temporary(){return temporary;}};
 })();

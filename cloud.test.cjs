@@ -3,10 +3,10 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
 let written,requests=[],privateRepo=true,popupCount=0,appNames=[],persistence;
 const authState={currentUser:null,authStateReady:async()=>{}};
 const mockApp={getApps:()=>[],initializeApp:(config,name)=>{appNames.push(name);return {};}};
-const mockAuth={getAuth:()=>authState,setPersistence:async(a,p)=>{persistence=p;},browserLocalPersistence:{kind:'persistent'},inMemoryPersistence:{kind:'temporary'},GoogleAuthProvider:class{setCustomParameters(p){assert.equal(p.prompt,'select_account');}},signInWithPopup:async()=>{popupCount++;authState.currentUser={uid:'owner',email:'owner@example.test',getIdTokenResult:async()=>({claims:{}})};return {user:authState.currentUser};},signOut:async()=>{authState.currentUser=null;}};
+const mockAuth={getAuth:()=>authState,setPersistence:async(a,p)=>{persistence=p;},browserLocalPersistence:{kind:'persistent'},inMemoryPersistence:{kind:'temporary'},GoogleAuthProvider:class{setCustomParameters(p){assert.equal(p.prompt,'select_account');}},signInWithPopup:async()=>{popupCount++;authState.currentUser={uid:'owner',email:'owner@example.test',getIdToken:async()=>'test-id-token',getIdTokenResult:async()=>({claims:{}})};return {user:authState.currentUser};},signOut:async()=>{authState.currentUser=null;}};
 const mockDb={getFirestore:()=>({}),collection:(...args)=>args.slice(1),query:x=>x,limit:()=>1,getDocs:async()=>({docs:[]}),getDoc:async()=>({exists:()=>false}),doc:(c,id)=>({c,id}),runTransaction:async(db,fn)=>fn({get:async()=>({exists:()=>false}),set:(ref,data)=>{written=data;}}),deleteDoc:async()=>{}};
-const ctx={window:{},crypto:require('node:crypto').webcrypto,TextEncoder,atob,btoa,mockApp,mockAuth,mockDb,fetch:async(url,options)=>{
-requests.push({url,options});let data;
+const ctx={window:{},crypto:require('node:crypto').webcrypto,TextEncoder,InstagramRetry:require('./instagram-retry'),atob,btoa,mockApp,mockAuth,mockDb,fetch:async(url,options)=>{
+requests.push({url,options});if(url.endsWith('/media'))return {ok:true,headers:{get:()=> 'image/jpeg'},arrayBuffer:async()=>Uint8Array.from([255,216,255]).buffer};let data;
 if(options.method==='PUT')data={commit:{sha:'commit-sha'},content:{sha:'blob-sha'}};
 else if(url.includes('/contents/'))data={encoding:'base64',content:'YWJj\n'};
 else data={private:privateRepo};return{ok:true,status:200,json:async()=>data,arrayBuffer:async()=>Uint8Array.from([97,98,99]).buffer};
@@ -21,10 +21,18 @@ await cloud.save(record);assert.equal(written.content,'원문');assert.equal(wri
 assert.equal(JSON.parse(requests.find(r=>r.options.method==='PUT').options.body).content,'YWJj');
 const restored=await cloud.hydrate(written);assert.equal(restored.attachments[0].data,'YWJj');assert.ok(requests.some(r=>r.url.endsWith('?ref=commit-sha')));
 await assert.rejects(()=>cloud.hydrate({...written,attachments:[{...written.attachments[0],github:{repository:'evil/repo',path:'attachments/a/b'}}]}),/일치하지/);
+ctx.window.INSTAGRAM_COLLECTOR_URL='https://collector.test';
+const imageRow={...record,source:'https://www.instagram.com/p/abc/',attachments:[],content:JSON.stringify({result:{images:['https://s.cdninstagram.com/a.jpg','https://s.cdninstagram.com/b.jpg']}})};
+const archived=await cloud.archiveInstagram(imageRow);assert.equal(archived.attachments.length,2);assert.equal(archived.media_backup.state,'collected');assert.ok(archived.attachments.every(a=>a.github&&!a.data));
+await cloud.save(archived);assert.equal(written.media_backup.files.length,2);assert.equal(written.attachments[0].data,undefined);
+const count=requests.length;await cloud.archiveInstagram(imageRow,[archived]);assert.equal(requests.length,count);
+const reel=await cloud.archiveInstagram({...imageRow,source:'https://www.instagram.com/reel/abc/',content:JSON.stringify({result:{images:['https://s.cdninstagram.com/ignored.jpg'],cover_image:'https://s.cdninstagram.com/cover.jpg'}})});assert.equal(reel.attachments.length,1);
+const fetchOriginal=ctx.fetch;ctx.fetch=async()=>{throw Error('network');};const failed=await cloud.archiveInstagram(imageRow);assert.equal(failed.media_backup.state,'partial');assert.equal(failed.media_backup.errors.length,2);ctx.fetch=fetchOriginal;
+console.log('PASS: actual media bytes uploaded, metadata only in DB, reuse saved files, reels cover only, failures remain partial');
 await cloud.disconnect();assert.equal(cloud.active,false);await assert.rejects(()=>cloud.save(record),/잠금/);
 assert.equal(await cloud.resume(),null);
 // A new page context recovers Firebase state without a popup or a GitHub token.
-authState.currentUser={uid:'owner',email:'owner@example.test',getIdTokenResult:async()=>({claims:{}})};
+authState.currentUser={uid:'owner',email:'owner@example.test',getIdToken:async()=>'test-id-token',getIdTokenResult:async()=>({claims:{}})};
 const freshContext={...ctx,window:{}};vm.createContext(freshContext);vm.runInContext(source,freshContext);
 const restoredCloud=freshContext.window.CloudStore;const before=requests.length;
 await restoredCloud.connect({apiKey:'key',projectId:'id',authDomain:'domain'},'owner/private');

@@ -5,14 +5,14 @@ const InstagramRetry={
     return null;
   },
   result(record){try{return JSON.parse(record.content).result||null;}catch{const marker='[공개 페이지 수집 결과 · 원문/미수집 상태]\n';const at=record.content?.indexOf(marker);if(at>=0)try{return JSON.parse(record.content.slice(at+marker.length));}catch{}return null;}},
-  needsRetry(record){const url=this.findUrl(record);if(!url)return false;const result=this.result(record);if(!result?.status)return true;const fields=/\/reels?\//.test(url)?['caption','comments','cover']:['caption','comments','images'];return fields.some(k=>result.status[k]!=='collected');},
+  needsRetry(record){const url=this.findUrl(record);if(!url)return false;const result=this.result(record);if(!result?.status)return true;const fields=/\/reels?\//.test(url)?['caption','comments','cover']:['caption','comments','images'];return fields.some(k=>result.status[k]!=='collected')||record.media_backup?.state!=='collected';},
   candidates(records){const newest=new Map();for(const record of records){const url=this.findUrl(record);if(!url)continue;const prior=newest.get(url);if(!prior||String(record.captured_at||'')>String(prior.captured_at||''))newest.set(url,record);}return [...newest.values()].filter(r=>this.needsRetry(r));},
   async runBatch(records,{extract,save,progress=()=>{},cancelled=()=>false}){
     const targets=this.candidates(records),report={total:targets.length,processed:0,saved:0,partial:0,empty:0,failed:0,cancelled:false,results:[]};
     for(const record of targets){if(cancelled()){report.cancelled=true;break;}const url=this.findUrl(record);progress({...report,current:url,phase:'collecting'});
       try{const result=await extract(url);const useful=!!(result.caption||result.page_description||result.cover_image||result.images?.length||result.comments?.length);
         if(!useful){report.empty++;report.results.push({url,state:'unavailable',message:'본문·이미지·댓글을 가져오지 못했습니다. 기존 자료는 유지했습니다.'});}
-        else{const capture=this.capture(record,result);await save(capture);report.saved++;const partial=this.needsRetry({...record,content:JSON.stringify({result})});if(partial)report.partial++;report.results.push({url,state:partial?'partial_saved':'saved',status:result.status});}
+        else{const capture=this.capture(record,result);const saved=await save(capture);report.saved++;const partial=this.needsRetry(saved||{...record,content:JSON.stringify({result})});if(partial)report.partial++;report.results.push({url,state:partial?'partial_saved':'saved',status:result.status,media_backup:saved?.media_backup});}
       }catch(error){report.failed++;report.results.push({url,state:'failed',message:error.message});}
       report.processed++;progress({...report,current:url,phase:'finished_item'});
     }

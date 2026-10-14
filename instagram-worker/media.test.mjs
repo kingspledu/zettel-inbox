@@ -1,0 +1,18 @@
+﻿import assert from 'node:assert/strict';
+import worker from './worker.mjs';
+const pair=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
+const jwk=await crypto.subtle.exportKey('jwk',pair.publicKey);jwk.kid='test';
+const encode=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
+const project='test-project',origin='https://kingspledu.github.io';
+const body=encode({alg:'RS256',kid:'test'})+'.'+encode({aud:project,iss:'https://securetoken.google.com/'+project,exp:Date.now()/1000+600,iat:Date.now()/1000,sub:'owner',inbox_uid:'moeum-owner'});
+const token=body+'.'+Buffer.from(await crypto.subtle.sign('RSASSA-PKCS1-v1_5',pair.privateKey,new TextEncoder().encode(body))).toString('base64url');
+let hits=0,mediaResponse=()=>new Response(new Uint8Array([255,216,255,0]));
+globalThis.fetch=async url=>{if(String(url).includes('googleapis.com'))return Response.json({keys:[jwk]});hits++;return mediaResponse();};
+const run=(url,auth=true)=>worker.fetch(new Request('https://worker.test/media',{method:'POST',headers:{Origin:origin,...(auth?{Authorization:'Bearer '+token}:{})},body:JSON.stringify({url})}),{ALLOWED_ORIGIN:origin,FIREBASE_PROJECT:project});
+assert.equal((await run('https://s.cdninstagram.com/a',false)).status,401);
+for(const url of ['http://s.cdninstagram.com/a','https://evil.test/a','https://cdninstagram.com.evil.test/a','https://s.cdninstagram.com:8080/a','https://user@s.cdninstagram.com/a'])assert.equal((await run(url)).status,400);
+assert.equal(hits,0);const valid=await run('https://s.cdninstagram.com/a');assert.equal(valid.status,200);assert.equal(valid.headers.get('Content-Type'),'image/jpeg');assert.equal((await valid.arrayBuffer()).byteLength,4);
+mediaResponse=()=>new Response('<html>login</html>');assert.equal((await run('https://s.cdninstagram.com/a')).status,422);
+mediaResponse=()=>new Response(null,{status:302,headers:{Location:'https://evil.test/'}});assert.equal((await run('https://s.cdninstagram.com/a')).status,422);
+mediaResponse=()=>new Response(new Uint8Array(10000001));assert.equal((await run('https://s.cdninstagram.com/a')).status,413);
+console.log('PASS: signed authentication, CDN-only media, no redirects, file signatures and 10MB limit');

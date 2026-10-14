@@ -21,8 +21,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --check app.js && node --check policy.js && node test.cjs
-      - run: mkdir _site && cp index.html style.css app.js policy.js _site/
+      - run: node --check app.js && node --check policy.js && node --check cloud.js && node --check cloud-ui.js && node test.cjs && node cloud.test.cjs
+      - run: mkdir _site && cp index.html style.css app.js policy.js cloud.js cloud-ui.js _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

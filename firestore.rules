@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Replace this placeholder with your Firebase Authentication user UID before publishing rules.
+    // Default is deny-all, even for authenticated users.
+    function owner(uid) {
+      return request.auth != null && request.auth.uid == uid
+        && request.auth.uid == 'REPLACE_WITH_YOUR_FIREBASE_UID';
+    }
+    match /users/{uid}/items/{itemId} {
+      allow read, delete: if owner(uid);
+      allow create: if owner(uid)
+        && request.resource.data.keys().hasOnly(['id','title','content','source','tags','captured_at','status','attachments'])
+        && request.resource.data.id == itemId
+        && request.resource.data.title is string
+        && request.resource.data.content is string
+        && request.resource.data.source is string
+        && request.resource.data.tags is list
+        && request.resource.data.captured_at is string
+        && request.resource.data.status == 'unprocessed'
+        && request.resource.data.attachments is list;
+      allow update: if false;
+    }
+  }
+}

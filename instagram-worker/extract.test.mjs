@@ -1,0 +1,7 @@
+import assert from 'node:assert/strict';import {postUrl,extract} from './extract.mjs';
+assert.throws(()=>postUrl('https://instagram.com.evil.test/p/a/'));assert.throws(()=>postUrl('https://www.instagram.com/accounts/login/'));
+const node={shortcode:'abc',edge_media_to_caption:{edges:[{node:{text:'본문'}}]},edge_sidecar_to_children:{edges:[{node:{display_url:'https://s.cdninstagram.com/a.jpg'}},{node:{display_url:'https://s.cdninstagram.com/b.jpg'}}]},edge_media_to_parent_comment:{count:1,page_info:{has_next_page:false},edges:[{node:{id:'c1',text:'댓글',owner:{username:'user'},edge_threaded_comments:{count:1,edges:[{node:{id:'r1',text:'답글'}}]}}}]}};
+const r=extract('<script type="application/json">'+JSON.stringify(node)+'</script>','https://www.instagram.com/p/abc/');assert.equal(r.caption,'본문');assert.equal(r.images.length,2);assert.equal(r.comments[0].replies[0].text,'답글');assert.equal(r.status.images,'partial');assert.equal(r.status.comments,'collected');
+const preview=extract('<meta property="og:image" content="https://s.cdninstagram.com/thumb.jpg">','https://www.instagram.com/p/abc/');assert.equal(preview.status.images,'partial');assert.equal(preview.status.comments,'unavailable');
+const reel=extract('<meta property="og:image" content="https://s.cdninstagram.com/thumb.jpg">','https://www.instagram.com/reel/abc/');assert.ok(reel.cover_image);assert.equal(reel.images.length,0);
+console.log('PASS: public caption, carousel candidates, comments/replies, reel cover, partial status and unsafe URL rejection');

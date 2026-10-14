@@ -1,0 +1,1 @@
+{"name":"moeum-instagram-collector","main":"worker.mjs","compatibility_date":"2026-10-14","workers_dev":true,"vars":{"ALLOWED_ORIGIN":"https://kingspledu.github.io","FIREBASE_PROJECT":"moeum-inbox-kingspledu-2026"},"observability":{"enabled":false}}

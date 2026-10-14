@@ -94,5 +94,6 @@ window.CloudStore = (() => {
   }
   async function remove(id){await sdk.deleteDoc(sdk.doc(collection(),id));}
   async function disconnect(){active=false;token='';user=null;inboxUid=null;if(auth)await authSdk.signOut(auth);}
-  return {connect,resume,login,unlock,setGithubToken,list,save,hydrate,remove,disconnect,get active(){return active;},get temporary(){return temporary;}};
+  async function extractInstagram(url){if(!active||!user)fail('잠금을 먼저 해제해주세요.');const endpoint=window.INSTAGRAM_COLLECTOR_URL;if(!endpoint)fail('상세 수집 서버가 설정되지 않았습니다.');const response=await fetch(endpoint+'/extract',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken()},body:JSON.stringify({url})});const result=await response.json();if(!response.ok)fail(result.error||'상세 수집에 실패했습니다.');return result;}
+  return {connect,resume,login,unlock,extractInstagram,setGithubToken,list,save,hydrate,remove,disconnect,get active(){return active;},get temporary(){return temporary;}};
 })();

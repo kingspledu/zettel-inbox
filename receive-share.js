@@ -12,7 +12,8 @@ const IncomingShare={
 };
 if(typeof module!=='undefined')module.exports=IncomingShare;
 if(typeof document!=='undefined'){
-  let incoming=null,installPrompt=null;
+  let incoming=null,installPrompt=null,details=null;
+  $('extractIncoming').onclick=async()=>{if(busy||!incoming)return;try{requireFirebase();}catch(error){return notify(error.message);}busy=true;$('extractIncoming').disabled=true;details=null;$('incomingDetails').textContent='공개 페이지에서 수집 중…';try{details=await CloudStore.extractInstagram(incoming.url);$('incomingDetails').textContent=JSON.stringify(details,null,2);}catch(error){$('incomingDetails').textContent=error.message+'\n본문·댓글·이미지는 수집되지 않았습니다. 링크만 보관할 수 있습니다.';}finally{busy=false;$('extractIncoming').disabled=false;}};
   if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
   window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;$('installApp').hidden=false;});
   $('installApp').onclick=async()=>{if(installPrompt){await installPrompt.prompt();installPrompt=null;}else notify('갤럭시 Chrome 메뉴에서 홈 화면에 추가 → 설치를 선택하세요.');};
@@ -20,6 +21,8 @@ if(typeof document!=='undefined'){
   catch(error){$('incomingPanel').hidden=false;$('incomingText').textContent=error.message;$('saveIncoming').disabled=true;}
   // Remove shared text from the address after receiving it; never store it locally.
   if(new URLSearchParams(location.search).has('share_text')||new URLSearchParams(location.search).has('share_url'))history.replaceState(null,'',location.pathname);
-  $('saveIncoming').onclick=async()=>{if(busy||!incoming)return;try{requireFirebase();}catch(error){return notify(error.message);}busy=true;$('saveIncoming').disabled=true;try{const rows=await CaptureFormat.toRecords(IncomingShare.capture(incoming));let added=0;for(const row of rows)if(await saveRecord(row))added++;await refresh();$('incomingPanel').hidden=true;incoming=null;notify(added?'Instagram 링크를 보관했습니다.':'이미 보관된 링크입니다.');}catch(error){notify('저장하지 못했습니다: '+error.message);$('saveIncoming').disabled=false;}finally{busy=false;}};
-  $('cancelIncoming').onclick=()=>{incoming=null;$('incomingText').textContent='';$('incomingLink').textContent='';$('incomingPanel').hidden=true;};
+  $('saveIncoming').onclick=async()=>{if(busy||!incoming)return;try{requireFirebase();}catch(error){return notify(error.message);}busy=true;$('saveIncoming').disabled=true;try{const value=details?{...incoming,raw:incoming.raw+'\n\n[공개 페이지 수집 결과 · 원문/미수집 상태]\n'+JSON.stringify(details,null,2)}:incoming;const rows=await CaptureFormat.toRecords(IncomingShare.capture(value));for(const row of rows)if(new TextEncoder().encode(JSON.stringify(row)).length>800000)throw Error('수집 결과가 너무 큽니다. 현재는 저장할 수 없습니다.');let added=0;for(const row of rows)if(await saveRecord(row))added++;await refresh();$('incomingPanel').hidden=true;incoming=null;details=null;notify(added?'Instagram 자료를 보관했습니다.':'이미 보관된 자료입니다.');}catch(error){notify('저장하지 못했습니다: '+error.message);$('saveIncoming').disabled=false;}finally{busy=false;}};
+  $('cancelIncoming').onclick=()=>{if(busy)return;incoming=null;details=null;$('incomingDetails').textContent='';$('incomingText').textContent='';$('incomingLink').textContent='';$('incomingPanel').hidden=true;};
+  window.addEventListener('inbox-unlocked',()=>{if(incoming&&!details)$('extractIncoming').onclick();});
+  if(incoming&&cloudActive())$('extractIncoming').onclick();
 }

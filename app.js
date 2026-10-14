@@ -17,6 +17,15 @@ function render() {
 function readFile(file) { return new Promise((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve({name:file.name,mime_type:file.type || 'application/octet-stream',size:file.size,encoding:'base64',data:reader.result.split(',')[1]}); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); }); }
 function download(blob,name) { const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href=url; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(url),10000); }
 function makeExport(items) { return {schema:'moeum.zettelkasten.inbox',schema_version:'1.0.0',exported_at:new Date().toISOString(),execution_requested:false,llm_instructions:LLM_POLICY,item_count:items.length,items}; }
+function makePromptExport() { return {...makeExport([]),purpose:'inbox_addition_prompt_only',inbox_addition_instructions:[
+  '이 파일은 기존 수집 자료가 없는 인박스 추가용 지침이다. 빈 items를 과거 자료가 없다는 증거로 해석하거나 다른 기존 파일의 내용을 초기화하지 않는다.',
+  '파일을 받으면 수신 사실만 알리고 대기한다. 사용자 지시 전에는 자료, 업무, 예시, 추천, 결과를 미리 만들지 않는다.',
+  '사용자가 새 자료를 인박스에 추가하라고 명시하면 제공한 원문과 실제 제공한 출처만 새 items 원소로 추가한다. 출처 등 없는 정보는 추측하지 않는다. 기존 원소와 필드는 수정하지 않는다.',
+  '새 자료 수집만으로 최소 단위 분리·분류·요약·재작성을 실행하지 않는다. 해당 작업은 별도의 명시적 사용자 지시가 있어야 한다.',
+  '사용자가 업무지시를 최소 단위로 나누어 기록하라고 명시하면 llm_instructions.work_instruction_recording을 따른다. 새 work_instruction_log 기록만 추가하고 기록된 업무 자체는 실행하지 않는다.',
+  '원본 지침과 기존 내용은 불변으로 유지한다. 개수·날짜·상태 등 기존 메타데이터도 자동 갱신하지 않는다. 추가한 내용은 신규 항목으로만 보존한다.',
+  '실제 파일 저장 도구가 없으면 JSON 출력과 파일 저장을 구분하고, 저장 완료라고 주장하지 않는다.'
+]}; }
 async function exportRecords(rows) { if(busy)return; if (!rows.length) return notify('내려받을 자료를 선택하거나 먼저 저장하세요.');busy=true;try{const complete=[];for(const r of rows)complete.push(cloudActive()?await CloudStore.hydrate(r):r);download(new Blob([JSON.stringify(makeExport(complete),null,2)],{type:'application/json;charset=utf-8'}),`moeum-inbox-${new Date().toISOString().replace(/[:.]/g,'-')}.json`); notify(`${rows.length}개 자료를 내보냈습니다. 첨부 원본도 포함됩니다.`);}catch(error){notify('내보내기 실패: '+error.message);}finally{busy=false;} }
 $('files').onchange = () => { $('fileNames').textContent = [...$('files').files].map(f=>f.name).join(', '); };
 $('capture').onsubmit = async event => {
@@ -39,6 +48,7 @@ $('items').onclick = async e => {
 $('search').oninput=render;
 $('selectAll').onchange=e=>{visible().forEach(r=>e.target.checked?selected.add(r.id):selected.delete(r.id));render();};
 $('exportAll').onclick=()=>exportRecords(records);
+$('exportPrompt').onclick=()=>{download(new Blob([JSON.stringify(makePromptExport(),null,2)],{type:'application/json;charset=utf-8'}),'moeum-inbox-addition-prompt.json');notify('수집 자료 없이 인박스 추가용 프롬프트만 내려받았습니다.');};
 $('exportSelected').onclick=()=>exportRecords(records.filter(r=>selected.has(r.id)));
 $('restore').onclick=()=>$('restoreFile').click();
 function validateImport(data) {

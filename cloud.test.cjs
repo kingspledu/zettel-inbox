@@ -3,7 +3,7 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
 let written,requests=[],privateRepo=true,popupCount=0,appNames=[],persistence;
 const authState={currentUser:null,authStateReady:async()=>{}};
 const mockApp={getApps:()=>[],initializeApp:(config,name)=>{appNames.push(name);return {};}};
-const mockAuth={getAuth:()=>authState,setPersistence:async(a,p)=>{persistence=p;},browserLocalPersistence:{kind:'persistent'},GoogleAuthProvider:class{},signInWithPopup:async()=>{popupCount++;authState.currentUser={uid:'owner',email:'owner@example.test'};return {user:authState.currentUser};},signOut:async()=>{authState.currentUser=null;}};
+const mockAuth={getAuth:()=>authState,setPersistence:async(a,p)=>{persistence=p;},browserLocalPersistence:{kind:'persistent'},inMemoryPersistence:{kind:'temporary'},GoogleAuthProvider:class{setCustomParameters(p){assert.equal(p.prompt,'select_account');}},signInWithPopup:async()=>{popupCount++;authState.currentUser={uid:'owner',email:'owner@example.test'};return {user:authState.currentUser};},signOut:async()=>{authState.currentUser=null;}};
 const mockDb={getFirestore:()=>({}),collection:(...args)=>args.slice(1),query:x=>x,limit:()=>1,getDocs:async()=>({docs:[]}),getDoc:async()=>({exists:()=>false}),doc:(c,id)=>({c,id}),runTransaction:async(db,fn)=>fn({get:async()=>({exists:()=>false}),set:(ref,data)=>{written=data;}}),deleteDoc:async()=>{}};
 const ctx={window:{},crypto:require('node:crypto').webcrypto,TextEncoder,atob,btoa,mockApp,mockAuth,mockDb,fetch:async(url,options)=>{
 requests.push({url,options});let data;
@@ -32,5 +32,9 @@ assert.equal(await restoredCloud.resume(),'owner@example.test');assert.equal(pop
 await restoredCloud.save({...record,attachments:[]});
 await assert.rejects(()=>restoredCloud.hydrate(written={...record,attachments:[{...record.attachments[0],data:undefined,github:{repository:'owner/private',path:'attachments/a/b',sha:'commit'}}]}),/토큰/);
 await restoredCloud.setGithubToken('token');await restoredCloud.disconnect();assert.equal(authState.currentUser,null);
-console.log('PASS: data separation, attachment roundtrip, persistence, reload without popup or GitHub auth, explicit logout');
+await restoredCloud.connect({apiKey:'key',projectId:'id',authDomain:'domain'},'owner/private','',{temporary:true});
+assert.equal(persistence,mockAuth.inMemoryPersistence);assert.equal(restoredCloud.temporary,true);const tempName=appNames.at(-1);assert.ok(tempName.startsWith('inbox-temporary-'));assert.notEqual(tempName,'inbox-id');
+assert.equal(await restoredCloud.resume(),null);await restoredCloud.login();assert.equal(restoredCloud.active,true);await restoredCloud.disconnect();
+await restoredCloud.connect({apiKey:'key',projectId:'id',authDomain:'domain'},'owner/private','',{temporary:true});assert.notEqual(appNames.at(-1),tempName);assert.equal(await restoredCloud.resume(),null);
+console.log('PASS: data separation, attachment roundtrip, persistent reload, isolated temporary login, no temporary restore, explicit logout');
 })().catch(error=>{console.error(error);process.exitCode=1;});

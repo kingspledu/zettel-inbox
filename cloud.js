@@ -1,6 +1,6 @@
 /* Firebase receives text and attachment metadata only. GitHub receives attachment bytes. */
 window.CloudStore = (() => {
-  let sdk, authSdk, auth, database, user, token = '', repo = '', active = false;
+  let sdk, authSdk, auth, database, user, token = '', repo = '', active = false, temporary = false;
   const apiRoot = 'https://api.github.com';
   const clean = r => ({id:r.id,title:r.title,content:r.content,source:r.source,tags:r.tags,captured_at:r.captured_at,status:'unprocessed',attachments:r.attachments});
   const fail = message => { throw new Error(message); };
@@ -19,11 +19,11 @@ window.CloudStore = (() => {
     try{const meta=await github(`/repos/${repo}`);if(!meta.private)fail('첨부파일 보호를 위해 비공개 저장소를 선택하세요.');}
     catch(error){token='';throw error;}
   }
-  async function connect(config, repository, accessToken = '') {
+  async function connect(config, repository, accessToken = '', options = {}) {
     if(active)fail('다른 설정으로 연결하려면 먼저 연결을 해제하세요.');
     if(!config.apiKey || !config.projectId || !config.authDomain)fail('Firebase 웹 앱 설정이 필요합니다.');
     if(!/^[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+$/.test(repository))fail('GitHub 저장소를 소유자/이름 형식으로 입력하세요.');
-    token='';repo=repository;
+    token='';repo=repository;temporary=options.temporary===true;
     try {
       if(accessToken.trim())await setGithubToken(accessToken);
       const [appModule,authModule,dbModule]=await Promise.all([
@@ -33,9 +33,9 @@ window.CloudStore = (() => {
       ]);
       sdk=dbModule;authSdk=authModule;
       // A stable app name is required to recover the same persisted Auth session after reload.
-      const appName=`inbox-${config.projectId}`;
+      const appName=temporary?`inbox-temporary-${crypto.randomUUID()}`:`inbox-${config.projectId}`;
       const app=appModule.getApps().find(a=>a.name===appName)||appModule.initializeApp(config,appName);
-      auth=authSdk.getAuth(app);await authSdk.setPersistence(auth,authSdk.browserLocalPersistence);
+      auth=authSdk.getAuth(app);await authSdk.setPersistence(auth,temporary?authSdk.inMemoryPersistence:authSdk.browserLocalPersistence);
       await auth.authStateReady();
       // Popup requires a user gesture; the connect UI loads SDK before enabling login.
       database=sdk.getFirestore(app);
@@ -51,7 +51,9 @@ window.CloudStore = (() => {
   async function resume() { return auth?.currentUser ? activate(auth.currentUser) : null; }
   async function login() {
     if(!auth)fail('먼저 설정 확인을 눌러주세요.');
-    return activate((await authSdk.signInWithPopup(auth,new authSdk.GoogleAuthProvider())).user);
+    const provider=new authSdk.GoogleAuthProvider();
+    if(temporary)provider.setCustomParameters({prompt:'select_account'});
+    return activate((await authSdk.signInWithPopup(auth,provider)).user);
   }
   function collection() { if(!active||!user)fail('클라우드 로그인이 필요합니다.');return sdk.collection(database,'users',user.uid,'items'); }
   async function list(){return (await sdk.getDocs(collection())).docs.map(d=>d.data());}
@@ -91,5 +93,5 @@ window.CloudStore = (() => {
   }
   async function remove(id){await sdk.deleteDoc(sdk.doc(collection(),id));}
   async function disconnect(){active=false;token='';user=null;if(auth)await authSdk.signOut(auth);}
-  return {connect,resume,login,setGithubToken,list,save,hydrate,remove,disconnect,get active(){return active;}};
+  return {connect,resume,login,setGithubToken,list,save,hydrate,remove,disconnect,get active(){return active;},get temporary(){return temporary;}};
 })();

@@ -1,0 +1,10 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+(async()=>{const els=new Map(),writes=[],session=new Map();const $=id=>{if(!els.has(id))els.set(id,{value:'',checked:false});return els.get(id);};let active=false,temporary=false;
+const CloudStore={connect:async(c,r,t,o)=>{temporary=o.temporary;},resume:async()=>null,login:async()=>{active=true;return'owner@test';},disconnect:async()=>{active=false;},get active(){return active;},get temporary(){return temporary;}};
+const ctx={$,CloudStore,localStorage:{getItem:()=>null,setItem:(...args)=>writes.push(args)},sessionStorage:{getItem:k=>session.get(k),setItem:(k,v)=>session.set(k,v),removeItem:k=>session.delete(k)},busy:false,selected:new Set(),refresh:async()=>{},notify:()=>{},document:{querySelector:()=>({})},localReady:Promise.resolve()};vm.createContext(ctx);vm.runInContext(fs.readFileSync('cloud-ui.js','utf8'),ctx);
+$('temporaryLogin').checked=true;$('firebaseConfig').value='{"projectId":"private-project"}';$('githubRepo').value='owner/private';
+await $('connectCloud').onclick();await $('loginCloud').onclick();assert.equal(temporary,true);assert.equal(writes.length,0);assert.equal(session.get('moeum-temporary'),'true');assert.equal($('migrateLocal').hidden,true);
+await $('disconnectCloud').onclick();assert.equal(writes.length,0);assert.equal($('firebaseConfig').value,'');
+$('temporaryLogin').checked=false;$('firebaseConfig').value='{"projectId":"home-project"}';await $('connectCloud').onclick();await $('loginCloud').onclick();assert.ok(writes.some(([k])=>k==='moeum-cloud-config'));assert.ok(writes.some(([k,v])=>k==='moeum-cloud-autoconnect'&&v==='true'));assert.equal(session.has('moeum-temporary'),false);
+console.log('PASS: temporary login writes no persistent config; default login remembers configuration');
+})().catch(error=>{console.error(error);process.exitCode=1;});

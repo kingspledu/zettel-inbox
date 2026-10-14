@@ -14,32 +14,44 @@ window.CloudStore = (() => {
     if(ref.repository !== repo || !/^attachments\/[0-9a-f-]+\/[0-9a-f-]+$/.test(ref.path)) fail('현재 연결과 일치하지 않는 첨부 경로입니다. 원래 저장소로 연결하세요.');
     return `/repos/${repo}/contents/${ref.path}`;
   }
-  async function connect(config, repository, accessToken) {
+  async function setGithubToken(accessToken) {
+    token=(accessToken || '').trim();
+    try{const meta=await github(`/repos/${repo}`);if(!meta.private)fail('첨부파일 보호를 위해 비공개 저장소를 선택하세요.');}
+    catch(error){token='';throw error;}
+  }
+  async function connect(config, repository, accessToken = '') {
     if(active)fail('다른 설정으로 연결하려면 먼저 연결을 해제하세요.');
     if(!config.apiKey || !config.projectId || !config.authDomain)fail('Firebase 웹 앱 설정이 필요합니다.');
     if(!/^[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+$/.test(repository))fail('GitHub 저장소를 소유자/이름 형식으로 입력하세요.');
-    token=accessToken.trim();repo=repository;
+    token='';repo=repository;
     try {
-      const meta=await github(`/repos/${repo}`);if(!meta.private)fail('첨부파일 보호를 위해 비공개 저장소를 선택하세요.');
+      if(accessToken.trim())await setGithubToken(accessToken);
       const [appModule,authModule,dbModule]=await Promise.all([
         import('https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js'),
         import('https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js'),
         import('https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js')
       ]);
       sdk=dbModule;authSdk=authModule;
-      const app=appModule.initializeApp(config,`inbox-${crypto.randomUUID()}`);
-      auth=authSdk.getAuth(app);await authSdk.setPersistence(auth,authSdk.inMemoryPersistence);
+      // A stable app name is required to recover the same persisted Auth session after reload.
+      const appName=`inbox-${config.projectId}`;
+      const app=appModule.getApps().find(a=>a.name===appName)||appModule.initializeApp(config,appName);
+      auth=authSdk.getAuth(app);await authSdk.setPersistence(auth,authSdk.browserLocalPersistence);
+      await auth.authStateReady();
       // Popup requires a user gesture; the connect UI loads SDK before enabling login.
       database=sdk.getFirestore(app);
       return true;
     }catch(error){token='';throw error;}
   }
+  async function activate(nextUser) {
+    user=nextUser;
+    try { await sdk.getDocs(sdk.query(sdk.collection(database,'users',user.uid,'items'),sdk.limit(1)));active=true; }
+    catch(error){active=false;user=null;throw error;}
+    return user.email;
+  }
+  async function resume() { return auth?.currentUser ? activate(auth.currentUser) : null; }
   async function login() {
     if(!auth)fail('먼저 설정 확인을 눌러주세요.');
-    user=(await authSdk.signInWithPopup(auth,new authSdk.GoogleAuthProvider())).user;
-    try { await sdk.getDocs(sdk.query(sdk.collection(database,'users',user.uid,'items'),sdk.limit(1)));active=true; }
-    catch(error){await authSdk.signOut(auth);user=null;throw error;}
-    return user.email;
+    return activate((await authSdk.signInWithPopup(auth,new authSdk.GoogleAuthProvider())).user);
   }
   function collection() { if(!active||!user)fail('클라우드 로그인이 필요합니다.');return sdk.collection(database,'users',user.uid,'items'); }
   async function list(){return (await sdk.getDocs(collection())).docs.map(d=>d.data());}
@@ -79,5 +91,5 @@ window.CloudStore = (() => {
   }
   async function remove(id){await sdk.deleteDoc(sdk.doc(collection(),id));}
   async function disconnect(){active=false;token='';user=null;if(auth)await authSdk.signOut(auth);}
-  return {connect,login,list,save,hydrate,remove,disconnect,get active(){return active;}};
+  return {connect,resume,login,setGithubToken,list,save,hydrate,remove,disconnect,get active(){return active;}};
 })();

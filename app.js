@@ -47,4 +47,4 @@ function validateImport(data) {
   return data.items;
 }
 $('restoreFile').onchange=async e=>{if(busy)return;busy=true;let completed=0;try{const file=e.target.files[0];if(!file)return;const incoming=validateImport(JSON.parse(await file.text()));const ids=new Set(records.map(r=>r.id)),fresh=incoming.filter(r=>!ids.has(r.id));for(const r of fresh){if(await saveRecord({id:r.id,title:r.title,content:r.content,source:r.source,tags:r.tags,captured_at:r.captured_at,status:'unprocessed',attachments:r.attachments}))completed++;}await refresh();notify(`${completed}개 복원, 중복 ${incoming.length-fresh.length}개 건너뜀. 운영 지침은 앱 기본값을 유지합니다.`);}catch(err){await refresh().catch(()=>{});notify(`${completed}개 저장 후 중단: ${err.message}`);}finally{busy=false;e.target.value='';}};
-openDB().then(async result=>{db=result;await refresh();}).catch(()=>notify('브라우저 저장소를 열 수 없습니다. 일반 브라우저에서 다시 열어주세요.'));
+const localReady=openDB().then(async result=>{db=result;await refresh();}).catch(()=>notify('브라우저 저장소를 열 수 없습니다. 일반 브라우저에서 다시 열어주세요.'));

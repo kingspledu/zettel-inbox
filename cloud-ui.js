@@ -5,8 +5,9 @@ try{temporaryTab=sessionStorage.getItem('moeum-temporary')==='true';}catch{}
 $('temporaryLogin').checked=temporaryTab;
 try{rememberedCloud=JSON.parse(localStorage.getItem('moeum-cloud-config')||'null');if(rememberedCloud){$('firebaseConfig').value=JSON.stringify(rememberedCloud.firebase,null,2);$('githubRepo').value=rememberedCloud.repository;}}catch{}
 function showMode(email){
-  $('connectionStatus').textContent=email?`${CloudStore.temporary?'임시 로그인':'로그인 유지'} · ${email}`:'브라우저 저장 모드';
-  document.querySelector('.storage').textContent=email?(CloudStore.temporary?'● 임시 로그인 · 새로고침하면 종료':'● Firebase 자동 연결 · 첨부는 GitHub'):'● 이 브라우저에 저장 · 동기화 없음';
+  $('connectionStatus').textContent=email?`${CloudStore.temporary?'임시 로그인':'로그인 유지'} · ${email}`:'Firebase 연결 필요';
+  document.querySelector('.storage').textContent=email?(CloudStore.temporary?'● 임시 로그인 · 새로고침하면 종료':'● Firebase 자동 연결 · 첨부는 GitHub'):'● Firebase 연결 대기 · 자료 저장 중지';
+  if(!email)$('cloudSettings').hidden=false;
   $('disconnectCloud').hidden=!email;$('migrateLocal').hidden=!email||CloudStore.temporary;$('connectCloud').disabled=!!email;
   $('temporaryLogin').disabled=!!email;
   $('loginCloud').disabled=!!email;$('firebaseConfig').disabled=!!email;$('githubRepo').disabled=!!email;
@@ -19,8 +20,8 @@ $('disconnectCloud').onclick=async()=>{if(busy)return;busy=true;try{if(!CloudSto
 $('githubToken').onchange=async()=>{if(!CloudStore.active||busy||!$('githubToken').value)return;busy=true;try{await CloudStore.setGithubToken($('githubToken').value);$('githubToken').value='';notify('첨부파일 저장소에 연결했습니다.');}catch(error){notify(error.message);}finally{busy=false;}};
 $('migrateLocal').onclick=async()=>{if(busy||!CloudStore.active)return;if(!confirm('이 브라우저의 모든 자료를 Firebase와 비공개 GitHub 저장소에 복사할까요? 로컬 원본은 유지합니다.'))return;busy=true;let copied=0,skipped=0;try{for(const r of await localRecords()){if(await CloudStore.save(r))copied++;else skipped++;}await refresh();notify(`${copied}개 복사, 중복 ${skipped}개 건너뜀. 로컬 원본은 유지했습니다.`);}catch(error){await refresh().catch(()=>{});notify(`${copied}개 복사 후 중단: ${error.message}`);}finally{busy=false;}};
 (async()=>{
-  if(!rememberedCloud||temporaryTab)return;
-  try{if(localStorage.getItem('moeum-cloud-autoconnect')==='false')return;}catch{return;}
+  if(!rememberedCloud||temporaryTab){showMode(null);return;}
+  try{if(localStorage.getItem('moeum-cloud-autoconnect')==='false'){showMode(null);return;}}catch{showMode(null);return;}
   busy=true;$('connectionStatus').textContent='기존 로그인으로 자동 연결 중…';
   try{await localReady;await CloudStore.connect(rememberedCloud.firebase,rememberedCloud.repository);const email=await CloudStore.resume();if(email)await connected(email);else{showMode(null);$('loginCloud').disabled=false;notify('로그인 세션이 없습니다. Google 로그인을 한 번 해주세요.');}}
   catch(error){showMode(null);$('loginCloud').disabled=false;notify('자동 연결을 완료하지 못했습니다: '+error.message);}

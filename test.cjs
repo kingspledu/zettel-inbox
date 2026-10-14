@@ -20,3 +20,18 @@ assert.throws(()=>vm.runInContext("validateImport({...exported,items:[sample,sam
 assert.throws(()=>vm.runInContext("validateImport({...exported,items:[{...sample,attachments:[{...sample.attachments[0],size:99}]}]})",ctx));
 const policy=require('./policy.js');assert.equal(policy.initial_state,'AWAITING_EXPLICIT_USER_COMMAND');assert.ok(policy.command_gate.length>=8);assert.ok(policy.atomic_split_algorithm.steps.length>=8);
 console.log('PASS: JSON roundtrip, attachment integrity, duplicate/invalid rejection, HTML escaping, command gate');
+(async()=>{
+  let browserOpens=0,saves=0;
+  ctx.indexedDB.open=()=>{browserOpens++;throw Error('Unexpected browser storage access');};
+  await assert.rejects(()=>vm.runInContext('saveRecord(sample)',ctx),/Firebase/);
+  await vm.runInContext('refresh()',ctx);
+  assert.equal(vm.runInContext('records.length',ctx),0);
+  assert.equal(el('saveCapture').disabled,true);
+  ctx.CloudStore={active:true,list:async()=>[vm.runInContext('sample',ctx)],save:async()=>{saves++;return true;}};
+  await vm.runInContext('refresh()',ctx);await vm.runInContext('saveRecord(sample)',ctx);
+  assert.equal(saves,1);assert.equal(el('saveCapture').disabled,false);
+  ctx.CloudStore.list=async()=>{throw Error('Network failure');};
+  await assert.rejects(()=>vm.runInContext('refresh()',ctx),/Network/);
+  assert.equal(vm.runInContext('records.length',ctx),0);assert.equal(browserOpens,0);
+  console.log('PASS: Firebase required; disconnected writes blocked; no browser fallback on connection errors');
+})().catch(error=>{console.error(error);process.exitCode=1;});

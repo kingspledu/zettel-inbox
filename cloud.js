@@ -63,7 +63,11 @@ window.CloudStore = (() => {
     for(const attachment of record.attachments) {
       if(attachment.data){attachments.push(attachment);continue;}
       if(!attachment.github)fail('첨부 원본 경로가 없습니다.');
-      const ref=attachment.github;const buffer=await github(pathFor(ref)+`?ref=${encodeURIComponent(ref.sha)}`,{},true);
+      const ref=attachment.github;pathFor(ref);let buffer;
+      if(window.INSTAGRAM_COLLECTOR_URL&&ref.repository==='kingspledu/zettel-inbox-attachments'){
+        const response=await fetch('http://127.0.0.1:4191/attachment',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken()},body:JSON.stringify(ref)});
+        if(!response.ok)fail('첨부 파일을 불러오지 못했습니다.');buffer=await response.arrayBuffer();
+      }else buffer=await github(pathFor(ref)+`?ref=${encodeURIComponent(ref.sha)}`,{},true);
       // ref.sha identifies a commit so a mutable branch cannot change the exported original.
       const bytes=new Uint8Array(buffer);if(bytes.length!==attachment.size)fail('첨부 크기가 일치하지 않습니다.');
       let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));const data=btoa(binary);
@@ -95,27 +99,22 @@ window.CloudStore = (() => {
   async function archiveInstagram(record, previous=[]) {
     const result=InstagramRetry.result(record);if(!result)return record;
     const urls=[...new Set(/\/reels?\//.test(InstagramRetry.findUrl(record)||'')?[result.cover_image].filter(Boolean):result.images||[])];
-    if(urls.length&&!token)fail('이미지 저장용 GitHub 토큰을 먼저 연결해주세요.');
+
     const attachments=[...record.attachments],files=[],errors=[];
     for(const url of urls){
       const existing=previous.flatMap(r=>r.attachments||[]).find(a=>a.source_url===url&&a.github);
       if(existing){attachments.push(existing);files.push({url,state:'stored'});continue;}
       try{
-        const response=await fetch(window.INSTAGRAM_COLLECTOR_URL+'/media',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken()},body:JSON.stringify({url})});
-        if(!response.ok)throw Error('이미지 응답 '+response.status);
-        const bytes=new Uint8Array(await response.arrayBuffer());const mime=response.headers.get('Content-Type').split(';')[0];
-        if(!['image/jpeg','image/png','image/webp'].includes(mime)||!bytes.length||bytes.length>10000000)throw Error('이미지 형식/크기 오류');
-        let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
-        const path=`attachments/${crypto.randomUUID()}/${crypto.randomUUID()}`;
-        const uploaded=await github(`/repos/${repo}/contents/${path}`,{method:'PUT',body:JSON.stringify({message:'Archive Instagram image',content:btoa(binary)})});
-        attachments.push({name:`instagram-${attachments.length+1}.${mime==='image/jpeg'?'jpg':mime.split('/')[1]}`,mime_type:mime,size:bytes.length,source_url:url,github:{repository:repo,path,sha:uploaded.commit.sha}});
+        const response=await fetch('http://127.0.0.1:4191/archive',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken()},body:JSON.stringify({url})});
+        const attachment=await response.json();if(!response.ok)throw Error(attachment.error||'이미지 저장 실패');
+        pathFor(attachment.github);attachments.push(attachment);
         files.push({url,state:'stored'});
-      }catch(error){errors.push({url,error:error.message});}
+      }catch(error){errors.push({url,error:error.message==='Failed to fetch'?'PC 수집 도우미를 실행해주세요.':error.message});}
     }
     return {...record,attachments,media_backup:{state:urls.length&&!errors.length?'collected':'partial',files,errors}};
   }
   async function remove(id){await sdk.deleteDoc(sdk.doc(collection(),id));}
   async function disconnect(){active=false;token='';user=null;inboxUid=null;if(auth)await authSdk.signOut(auth);}
-  async function extractInstagram(url){if(!active||!user)fail('잠금을 먼저 해제해주세요.');const endpoint=window.INSTAGRAM_COLLECTOR_URL;if(!endpoint)fail('상세 수집 서버가 설정되지 않았습니다.');const response=await fetch(endpoint+'/extract',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken()},body:JSON.stringify({url})});const result=await response.json();if(!response.ok)fail(result.error||'상세 수집에 실패했습니다.');return result;}
-  return {connect,resume,login,unlock,extractInstagram,archiveInstagram,setGithubToken,list,save,hydrate,remove,disconnect,get mediaReady(){return !!token;},get active(){return active;},get temporary(){return temporary;}};
+  async function extractInstagram(url){if(!active||!user)fail('잠금을 먼저 해제해주세요.');const endpoint=window.INSTAGRAM_COLLECTOR_URL;try{const health=await fetch('http://127.0.0.1:4191/health',{signal:AbortSignal.timeout(2500)});if(health.ok&&(await health.json()).app==='moeum-local-collector'){const local=await fetch('http://127.0.0.1:4191/extract',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken()},body:JSON.stringify({url})});const data=await local.json();if(local.ok)return data;throw Error(data.error||'PC 수집 실패');}}catch(error){if(error.message==='PC 수집 실패'||error.message?.startsWith('수집 실패:'))throw error;}if(!endpoint)fail('상세 수집 서버가 설정되지 않았습니다.');const response=await fetch(endpoint+'/extract',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken()},body:JSON.stringify({url})});const result=await response.json();if(!response.ok)fail(result.error||'상세 수집에 실패했습니다.');return result;}
+  return {connect,resume,login,unlock,extractInstagram,archiveInstagram,setGithubToken,list,save,hydrate,remove,disconnect,get active(){return active;},get temporary(){return temporary;}};
 })();

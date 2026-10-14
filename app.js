@@ -80,7 +80,6 @@ $('stopRetry').onclick=()=>{cancelBatchRetry=true;$('stopRetry').disabled=true;$
 $('retryMissingInstagram').onclick=async()=>{
   if(busy)return;try{requireFirebase();}catch(error){return notify(error.message);}
   if(!InstagramRetry.candidates(records).length)return notify('재시도할 미수집 Instagram 링크가 없습니다.');
-  if(!CloudStore.mediaReady){$('saveRetry').hidden=true;$('stopRetry').hidden=true;$('retryResult').textContent='이미지 파일을 저장하려면 아래 저장 연결을 먼저 완료한 뒤 일괄 다운로드를 다시 누르세요.';$('retryDialog').showModal();return;}
   busy=true;cancelBatchRetry=false;pendingInstagramRetry=null;$('saveRetry').disabled=true;$('saveRetry').hidden=true;$('stopRetry').hidden=false;$('stopRetry').disabled=false;$('stopRetry').textContent='중지';$('retryDialog').showModal();
   try{await InstagramRetry.runBatch([...records],{
     extract:url=>CloudStore.extractInstagram(url),
@@ -106,5 +105,3 @@ $('restoreFile').onchange=async e=>{if(busy)return;busy=true;let completed=0;try
 // Legacy IndexedDB is opened only when the user explicitly migrates old records.
 const localReady=Promise.resolve();
 render();
-
-$('connectMediaToken').onclick=async()=>{try{await CloudStore.setGithubToken($('mediaToken').value);$('mediaToken').value='';notify('이미지 저장 연결 완료. 현재 탭에서 사용합니다.');}catch(error){notify(error.message);}};

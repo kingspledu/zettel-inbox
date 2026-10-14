@@ -1,2 +1,5 @@
 instagram-worker/.wrangler/
 instagram-worker/node_modules/
+
+.local-collector/
+__pycache__/

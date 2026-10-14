@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict');global.crypto=require('node:crypto').webcrypto;const f=require('./capture-format.js');
+const sample=()=>({schema:'moeum.zettelkasten.capture',schema_version:'1.0.0',sources:[{id:'s1',text:'책 읽기. 메모 남기기.',source:''}],ideas:[{id:'i1',title:'',source_id:'s1',verbatim_text:'책 읽기.',source_span:{start:0,end:5},context_spans:[],kind:'unclassified',tags:[],related_idea_ids:[],ambiguities:[]},{id:'i2',title:'',source_id:'s1',verbatim_text:'메모 남기기.',source_span:{start:6,end:13},context_spans:[],kind:'unclassified',tags:[],related_idea_ids:[],ambiguities:[]}]});
+(async()=>{const data=sample(),before=JSON.stringify(data);f.validate(data);const records=await f.toRecords(data);assert.equal(JSON.stringify(data),before);assert.equal(records.length,2);assert.equal(records[0].content,'책 읽기.');assert.deepEqual(records[0].capture.source,data.sources[0]);f.validateStored(records[0]);assert.equal((await f.toRecords(data))[0].id,records[0].id);
+const changed=sample();changed.ideas[0].verbatim_text='없는 말';assert.throws(()=>f.validate(changed),/일치/);
+const gap=sample();gap.ideas.pop();assert.throws(()=>f.validate(gap),/누락/);
+const badRef=sample();badRef.ideas[0].related_idea_ids=['missing'];assert.throws(()=>f.validate(badRef),/참조/);
+const duplicate=sample();duplicate.ideas[1].id='i1';assert.throws(()=>f.validate(duplicate),/중복/);
+const extra=sample();extra.guess='generated';assert.throws(()=>f.validate(extra),/필드/);assert.throws(()=>f.validate(f.template()),/1개/);
+const tampered=structuredClone(records[0]);tampered.content='변경';assert.throws(()=>f.validateStored(tampered),/일치/);
+console.log('PASS: JSON-only capture, exact spans, complete coverage, immutable source, stable import IDs, invalid references and tampering rejected');})().catch(e=>{console.error(e);process.exitCode=1;});

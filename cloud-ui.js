@@ -10,7 +10,7 @@ function showMode(email){
   $('connectionStatus').textContent=email?`${CloudStore.temporary?'임시 로그인':'로그인 유지'} · ${email}`:'Firebase 연결 필요';
   document.querySelector('.storage').textContent=email?(CloudStore.temporary?'● 임시 로그인 · 새로고침하면 종료':'● Firebase 자동 연결 · 첨부는 GitHub'):'● Firebase 연결 대기 · 자료 저장 중지';
   if(!email)$('cloudSettings').hidden=false;
-  $('disconnectCloud').hidden=!email;$('migrateLocal').hidden=!email||CloudStore.temporary;$('connectCloud').disabled=!!email;
+  $('disconnectCloud').hidden=!email;$('migrateLocal').hidden=true;$('connectCloud').disabled=!!email;
   $('temporaryLogin').disabled=!!email;
   $('loginCloud').disabled=!!email;$('firebaseConfig').disabled=!!email;$('githubRepo').disabled=!!email;
 }

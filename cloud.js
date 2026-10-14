@@ -2,7 +2,7 @@
 window.CloudStore = (() => {
   let sdk, authSdk, auth, database, user, token = '', repo = '', active = false, temporary = false;
   const apiRoot = 'https://api.github.com';
-  const clean = r => ({id:r.id,title:r.title,content:r.content,source:r.source,tags:r.tags,captured_at:r.captured_at,status:'unprocessed',attachments:r.attachments});
+  const clean = r => ({id:r.id,title:r.title,content:r.content,source:r.source,tags:r.tags,captured_at:r.captured_at,status:'unprocessed',attachments:r.attachments,...(r.capture?{capture:r.capture}:{})});
   const fail = message => { throw new Error(message); };
   async function github(path, options = {}, raw = false) {
     if(!token) fail('첨부파일을 사용하려면 연결 설정에서 GitHub 토큰을 입력하세요.');
@@ -71,7 +71,7 @@ window.CloudStore = (() => {
     return {...record,attachments};
   }
   async function save(record) {
-    collection();const existing=await sdk.getDoc(sdk.doc(collection(),record.id));if(existing.exists())return false;
+    collection();const existing=await sdk.getDoc(sdk.doc(collection(),record.id));if(existing.exists()){if(record.capture&&JSON.stringify(existing.data().capture)!==JSON.stringify(record.capture))fail('같은 ID의 기존 아이디어와 내용이 다릅니다. 기존 자료는 수정하지 않았습니다. 새 아이디어 ID를 사용하세요.');return false;}
     const uploaded=[];const attachments=[];
     try {
       for(const file of record.attachments){

@@ -5,3 +5,5 @@ const manifest=JSON.parse(fs.readFileSync('manifest.webmanifest','utf8'));assert
 console.log('PASS: Instagram shared text and URL parsing, capture format, malicious host rejection, manifest and icons');
 
 const yt=require("./receive-share").parse(new URLSearchParams({share_url:"https://youtu.be/jNQXAC9IVRw?t=83"}));require("node:assert/strict").equal(yt.url,"https://youtu.be/jNQXAC9IVRw?t=83");
+
+for(const host of ["www.linkedin.com","x.com","twitter.com","www.threads.com","www.threads.net"]){const url="https://"+host+"/post/test";require("node:assert/strict").equal(require("./receive-share").parse(new URLSearchParams({share_url:url})).url,url);}

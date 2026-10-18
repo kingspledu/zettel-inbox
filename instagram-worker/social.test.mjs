@@ -1,0 +1,8 @@
+import assert from 'node:assert/strict';import {socialUrl,extractSocial} from './social.mjs';
+for(const host of ['www.linkedin.com','x.com','twitter.com','www.threads.net','www.threads.com'])assert.ok(socialUrl('https://'+host+'/post/1').platform);
+for(const url of ['http://x.com/a','https://x.com.evil.test/a','https://user@x.com/a','https://127.0.0.1/a'])assert.throws(()=>socialUrl(url));
+const html=`<meta property="og:title" content="Title &amp; text"><meta property="og:description" content="Preview"><meta property="og:image" content="https://example.com/image.jpg"><script type="application/ld+json">{"@type":"SocialMediaPosting","articleBody":"Full original","author":{"name":"Writer"},"datePublished":"2026-10-18","image":"https://example.com/image2.jpg","url":"https://x.com/a/status/1"}</script>`;
+const result=extractSocial(html,'https://x.com/a/status/1');assert.equal(result.title,'Title & text');assert.equal(result.caption,'Full original');assert.equal(result.author,'Writer');assert.equal(result.images.length,2);assert.equal(result.status.comments,'unavailable');assert.equal(result.status.images,'partial');assert.equal(result.structured_data.length,1);
+assert.equal(extractSocial('<meta property="og:description" content="Preview">','https://www.threads.com/@a/post/1').status.caption,'preview_only');
+assert.equal(extractSocial('<meta property="og:image" content="javascript:alert(1)">','https://www.linkedin.com/posts/1').images.length,0);
+console.log('PASS: social host validation, metadata, full-vs-preview body, author, date, images, original structured data and missing status');

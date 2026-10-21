@@ -49,7 +49,7 @@ def extract(url):
                   status=dict(caption="unavailable", comments="unavailable", images="unavailable", cover="unavailable"),
                   limitations=["접근하지 못한 댓글과 답글은 미수집으로 남습니다."], collector="local-instaloader-yt-dlp")
     try:
-        loader = instaloader.Instaloader(quiet=True, request_timeout=25, max_connection_attempts=2)
+        loader = instaloader.Instaloader(quiet=True, request_timeout=20, max_connection_attempts=1, fatal_status_codes=[401,403,429])
         post = instaloader.Post.from_shortcode(loader.context, url.strip("/").split("/")[-1])
         result["caption"] = post.caption
         result["status"]["caption"] = "collected"

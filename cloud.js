@@ -113,9 +113,27 @@ window.CloudStore = (() => {
     }
     return {...record,attachments,media_backup:{state:urls.length&&!errors.length?'collected':'partial',files,errors}};
   }
-  async function extractSocial(url){if(!active||!user)fail('잠금을 먼저 해제해주세요.');const response=await fetch(window.INSTAGRAM_COLLECTOR_URL+'/social',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken()},body:JSON.stringify({url})});const data=await response.json();if(!response.ok)fail(data.error||'공개 자료 수집 실패');return data;}
+  async function collectRequest(endpoint,url,timeout){
+    for(let attempt=0;attempt<2;attempt++){
+      const response=await fetch(endpoint,{method:'POST',signal:AbortSignal.timeout(timeout),headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken(attempt>0)},body:JSON.stringify({url})});
+      let data;try{data=await response.json();}catch{throw Error('수집 서버가 올바른 응답을 보내지 않았습니다.');}
+      if(response.status===401&&attempt===0)continue;
+      if(!response.ok)throw Error(data.error||`수집 서버 오류 (${response.status})`);
+      if(!(data.caption!=null||data.page_description||data.title||data.cover_image||data.images?.length||data.comments?.length))throw Error('페이지에는 접근했지만 게시물 본문이나 이미지를 찾지 못했습니다.');
+      return data;
+    }
+    throw Error('로그인이 만료되었습니다. 보관함을 다시 열어주세요.');
+  }
+  async function extractSocial(url){if(!active||!user)fail('잠금을 먼저 해제해주세요.');try{return await collectRequest(window.INSTAGRAM_COLLECTOR_URL+'/social',url,30000);}catch(error){fail('공개 웹 재수집 실패: '+error.message+' 로그인·접근 제한 자료는 원본 링크에서 확인해주세요.');}}
   async function remove(id){await sdk.deleteDoc(sdk.doc(collection(),id));}
   async function disconnect(){active=false;token='';user=null;inboxUid=null;if(auth)await authSdk.signOut(auth);}
-  async function extractInstagram(url){if(!active||!user)fail('잠금을 먼저 해제해주세요.');const endpoint=window.INSTAGRAM_COLLECTOR_URL;try{const health=await fetch('http://127.0.0.1:4191/health',{signal:AbortSignal.timeout(2500)});if(health.ok&&(await health.json()).app==='moeum-local-collector'){const local=await fetch('http://127.0.0.1:4191/extract',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken()},body:JSON.stringify({url})});const data=await local.json();if(local.ok)return data;throw Error(data.error||'PC 수집 실패');}}catch(error){if(error.message==='PC 수집 실패'||error.message?.startsWith('수집 실패:'))throw error;}if(!endpoint)fail('상세 수집 서버가 설정되지 않았습니다.');const response=await fetch(endpoint+'/extract',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken()},body:JSON.stringify({url})});const result=await response.json();if(!response.ok)fail(result.error||'상세 수집에 실패했습니다.');return result;}
+  async function extractInstagram(url){
+    if(!active||!user)fail('잠금을 먼저 해제해주세요.');const attempts=[];
+    try{const health=await fetch('http://127.0.0.1:4191/health',{signal:AbortSignal.timeout(3500)});if(!health.ok||(await health.json()).app!=='moeum-local-collector')throw Error('PC 도우미를 확인하지 못했습니다.');
+      try{const result=await collectRequest('http://127.0.0.1:4191/extract',url,100000);return {...result,collection_attempts:[{path:'PC 도우미',state:'collected'}]};}catch(error){attempts.push({path:'PC 도우미',state:'failed',reason:error.message});}
+    }catch{attempts.push({path:'PC 연결',state:'unavailable',reason:'PC 도우미가 꺼져 있거나 브라우저의 로컬 접근이 허용되지 않았습니다.'});}
+    try{const result=await collectRequest(window.INSTAGRAM_COLLECTOR_URL+'/extract',url,30000);return {...result,collection_attempts:[...attempts,{path:'공개 웹',state:'collected'}]};}
+    catch(error){attempts.push({path:'공개 웹',state:'failed',reason:error.message});throw Error(attempts.map(a=>a.path+': '+a.reason).join('\n')+'\nPC에서 START-COLLECTOR.cmd를 실행하고 브라우저의 로컬 네트워크 접근을 허용한 뒤 다시 시도해주세요. 기존 자료는 유지됩니다.');}
+  }
   return {connect,resume,login,unlock,extractSocial,extractInstagram,archiveInstagram,setGithubToken,list,save,hydrate,remove,disconnect,get active(){return active;},get temporary(){return temporary;}};
 })();

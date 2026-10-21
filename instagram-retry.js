@@ -5,7 +5,7 @@ const InstagramRetry={
     return null;
   },
   result(record){try{return JSON.parse(record.content).result||null;}catch{const marker='[공개 페이지 수집 결과 · 원문/미수집 상태]\n';const at=record.content?.indexOf(marker);if(at>=0)try{return JSON.parse(record.content.slice(at+marker.length));}catch{}return null;}},
-  needsRetry(record){const url=this.findUrl(record);if(!url)return false;const result=this.result(record);if(!result?.status)return true;const fields=/\/reels?\//.test(url)?['caption','comments','cover']:['caption','comments','images'];return fields.some(k=>result.status[k]!=='collected')||record.media_backup?.state!=='collected';},
+  needsRetry(record){const url=this.findUrl(record);if(!url)return false;const result=this.result(record);if(!result?.status)return true;const fields=/\/reels?\//.test(url)?['caption','cover']:['caption','images'];return fields.some(k=>result.status[k]!=='collected')||record.media_backup?.state!=='collected';},
   candidates(records){const newest=new Map();for(const record of records){const url=this.findUrl(record);if(!url)continue;const prior=newest.get(url);if(!prior||String(record.captured_at||'')>String(prior.captured_at||''))newest.set(url,record);}return [...newest.values()].filter(r=>this.needsRetry(r));},
   async runBatch(records,{extract,save,progress=()=>{},cancelled=()=>false}){
     const targets=this.candidates(records),report={total:targets.length,processed:0,saved:0,partial:0,empty:0,failed:0,cancelled:false,results:[]};

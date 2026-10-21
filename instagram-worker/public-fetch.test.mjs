@@ -1,0 +1,5 @@
+import assert from 'node:assert/strict';import {fetchPublic} from './public-fetch.mjs';
+let count=0;globalThis.fetch=async()=>++count===1?new Response(null,{status:302,headers:{Location:'https://www.linkedin.com/posts/test/'}}):new Response('page');assert.equal((await fetchPublic('https://linkedin.com/posts/test/',true)).status,200);assert.equal(count,2);
+count=0;globalThis.fetch=async()=>{count++;return new Response(null,{status:302,headers:{Location:'https://evil.test/'}});};await assert.rejects(()=>fetchPublic('https://x.com/a/status/1',true));assert.equal(count,1);
+globalThis.fetch=async()=>new Response(null,{status:302,headers:{Location:'https://www.instagram.com/accounts/login/'}});await assert.rejects(()=>fetchPublic('https://www.instagram.com/p/abcdef/'));
+globalThis.fetch=async()=>new Response(null,{status:302,headers:{Location:'https://x.com/a/status/1'}});await assert.rejects(()=>fetchPublic('https://x.com/a/status/1',true));console.log('PASS: safe same-service redirects, blocked cross-service/login redirects and loop bounds');

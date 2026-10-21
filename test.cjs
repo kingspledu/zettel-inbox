@@ -28,6 +28,9 @@ if(!postMarkup.includes('게시물 링크 복사')||!postMarkup.includes('릴스
 if(postMarkup.includes('<script>')||postMarkup.includes('src="https://evil.test'))throw Error('게시물 카드에서 위험한 원문 실행');
 if(instagramSample.content!==JSON.stringify({result:{caption:'본문 <script>alert(1)</script>',cover_image:'https://s.cdninstagram.com/cover.jpg',images:['https://evil.test/tracker'],status:{caption:'collected'}}}))throw Error('표시 중 원문 수정');
 `,ctx);
+const progressElement=el('retryStageProgress');progressElement.removeAttribute=function(name){delete this[name];};
+vm.runInContext("showRetryStage({stage:'파일 처리',completed:2,total:4})",ctx);assert.equal(progressElement.value,2);assert.equal(progressElement.max,4);
+vm.runInContext("showRetryStage({stage:'웹 응답 대기'})",ctx);assert.equal(progressElement.value,undefined);assert.equal(el('retryStageLabel').textContent,'웹 응답 대기');
 console.log('PASS: formatted reel card, cover preview, canonical copy link and safe original preservation');
 console.log('PASS: JSON roundtrip, attachment integrity, duplicate/invalid rejection, HTML escaping, command gate');
 (async()=>{

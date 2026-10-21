@@ -96,21 +96,25 @@ window.CloudStore = (() => {
       throw error;
     }
   }
-  async function archiveInstagram(record, previous=[]) {
+  async function archiveInstagram(record, previous=[],onProgress=()=>{}) {
     const result=InstagramRetry.result(record);if(!result)return record;
     const urls=[...new Set(/\/reels?\//.test(InstagramRetry.findUrl(record)||'')?[result.cover_image].filter(Boolean):result.images||[])];
 
     const attachments=[...record.attachments],files=[],errors=[];
+    let processed=0;
     for(const url of urls){
+      onProgress({stage:`이미지 파일 처리 ${processed+1}/${urls.length}`,completed:processed,total:urls.length});
       const existing=previous.flatMap(r=>r.attachments||[]).find(a=>a.source_url===url&&a.github);
-      if(existing){attachments.push(existing);files.push({url,state:'stored'});continue;}
+      if(existing){attachments.push(existing);files.push({url,state:'stored'});onProgress({stage:'저장된 이미지 재사용',completed:++processed,total:urls.length});continue;}
       try{
         const response=await fetch('http://127.0.0.1:4191/archive',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await user.getIdToken()},body:JSON.stringify({url})});
         const attachment=await response.json();if(!response.ok)throw Error(attachment.error||'이미지 저장 실패');
         pathFor(attachment.github);attachments.push(attachment);
         files.push({url,state:'stored'});
       }catch(error){errors.push({url,error:error.message==='Failed to fetch'?'PC 수집 도우미를 실행해주세요.':error.message});}
+      onProgress({stage:'이미지 파일 처리',completed:++processed,total:urls.length});
     }
+    onProgress({stage:'이미지 처리 완료',completed:urls.length,total:urls.length||1});
     return {...record,attachments,media_backup:{state:urls.length&&!errors.length?'collected':'partial',files,errors}};
   }
   async function collectRequest(endpoint,url,timeout){
@@ -127,12 +131,12 @@ window.CloudStore = (() => {
   async function extractSocial(url){if(!active||!user)fail('잠금을 먼저 해제해주세요.');try{return await collectRequest(window.INSTAGRAM_COLLECTOR_URL+'/social',url,30000);}catch(error){fail('공개 웹 재수집 실패: '+error.message+' 로그인·접근 제한 자료는 원본 링크에서 확인해주세요.');}}
   async function remove(id){await sdk.deleteDoc(sdk.doc(collection(),id));}
   async function disconnect(){active=false;token='';user=null;inboxUid=null;if(auth)await authSdk.signOut(auth);}
-  async function extractInstagram(url){
-    if(!active||!user)fail('잠금을 먼저 해제해주세요.');const attempts=[];
+  async function extractInstagram(url,onProgress=()=>{}){
+    if(!active||!user)fail('잠금을 먼저 해제해주세요.');const attempts=[];onProgress({stage:'PC 도우미 연결 확인 중'});
     try{const health=await fetch('http://127.0.0.1:4191/health',{signal:AbortSignal.timeout(3500)});if(!health.ok||(await health.json()).app!=='moeum-local-collector')throw Error('PC 도우미를 확인하지 못했습니다.');
-      try{const result=await collectRequest('http://127.0.0.1:4191/extract',url,100000);return {...result,collection_attempts:[{path:'PC 도우미',state:'collected'}]};}catch(error){attempts.push({path:'PC 도우미',state:'failed',reason:error.message});}
+      try{onProgress({stage:'PC에서 본문·이미지 조회 중'});const result=await collectRequest('http://127.0.0.1:4191/extract',url,100000);return {...result,collection_attempts:[{path:'PC 도우미',state:'collected'}]};}catch(error){attempts.push({path:'PC 도우미',state:'failed',reason:error.message});}
     }catch{attempts.push({path:'PC 연결',state:'unavailable',reason:'PC 도우미가 꺼져 있거나 브라우저의 로컬 접근이 허용되지 않았습니다.'});}
-    try{const result=await collectRequest(window.INSTAGRAM_COLLECTOR_URL+'/extract',url,30000);return {...result,collection_attempts:[...attempts,{path:'공개 웹',state:'collected'}]};}
+    try{onProgress({stage:'공개 웹에서 본문·이미지 조회 중'});const result=await collectRequest(window.INSTAGRAM_COLLECTOR_URL+'/extract',url,30000);return {...result,collection_attempts:[...attempts,{path:'공개 웹',state:'collected'}]};}
     catch(error){attempts.push({path:'공개 웹',state:'failed',reason:error.message});throw Error(attempts.map(a=>a.path+': '+a.reason).join('\n')+'\nPC에서 START-COLLECTOR.cmd를 실행하고 브라우저의 로컬 네트워크 접근을 허용한 뒤 다시 시도해주세요. 기존 자료는 유지됩니다.');}
   }
   return {connect,resume,login,unlock,extractSocial,extractInstagram,archiveInstagram,setGithubToken,list,save,hydrate,remove,disconnect,get active(){return active;},get temporary(){return temporary;}};
